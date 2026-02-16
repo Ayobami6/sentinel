@@ -1,10 +1,12 @@
-from fastapi import FastAPI, HTTPException, Body
-from fastapi.middleware.cors import CORSMiddleware
+import traceback
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
-from datetime import datetime, timedelta
+from typing import Optional, Dict
+from datetime import datetime
 import uuid
-import random
+from fastapi.middleware.cors import CORSMiddleware
+from services.dynamo_service import SentinelDB
+import traceback
 
 app = FastAPI(title="Sentinel Ingest API", version="1.0.0")
 
@@ -16,6 +18,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize DB
+db = SentinelDB()
+
+
+# Ensure tables exist on startup (or handle via separate script/IaC in prod)
+@app.on_event("startup")
+async def startup_event():
+    try:
+        db.init_tables()
+        print("DynamoDB tables initialized/verified.")
+    except Exception as e:
+        print(f"Warning: Could not initialize tables (check AWS creds): {e}")
+
 
 # --- Data Models ---
 
@@ -50,125 +66,58 @@ class AppLogIn(BaseModel):
     timestamp: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 
-# --- In-Memory Storage (MVP) ---
-metrics_store = []
-web_logs_store = []
-app_logs_store = []
-servers_registry = {
-    "srv-01": {
-        "id": "srv-01",
-        "hostname": "prod-api-01",
-        "ip": "10.0.1.45",
-        "os": "Ubuntu 22.04",
-        "status": "healthy",
-        "agentVersion": "v1.2.4",
-    },
-    "srv-02": {
-        "id": "srv-02",
-        "hostname": "prod-db-master",
-        "ip": "10.0.1.52",
-        "os": "Debian 11",
-        "status": "warning",
-        "agentVersion": "v1.2.4",
-    },
-}
+class ServerIn(BaseModel):
+    id: str
+    hostname: str
+    ip: str
+    os: str
+    status: str
+    agentVersion: str
 
-
-# Pre-populate data
-def pre_populate():
-    now = datetime.utcnow()
-    paths = [
-        "/api/v1/auth",
-        "/api/v2/users",
-        "/static/logo.png",
-        "/api/v1/billing",
-        "/health",
-    ]
-
-    for sid in servers_registry:
-        # Metrics
-        for i in range(30):
-            metrics_store.append(
-                {
-                    "server_id": sid,
-                    "cpu": (
-                        random.uniform(10, 50)
-                        if sid == "srv-01"
-                        else random.uniform(50, 90)
-                    ),
-                    "memory": random.uniform(40, 70),
-                    "disk": 65,
-                    "network_in": random.uniform(100, 500),
-                    "network_out": random.uniform(50, 300),
-                    "timestamp": now - timedelta(minutes=i),
-                }
-            )
-
-        # Web Logs
-        for i in range(20):
-            status = random.choice([200, 200, 201, 404, 500])
-            web_logs_store.append(
-                {
-                    "id": str(uuid.uuid4()),
-                    "server_id": sid,
-                    "method": random.choice(["GET", "POST"]),
-                    "path": random.choice(paths),
-                    "status": status,
-                    "response_time": random.randint(50, 400),
-                    "ip": f"192.168.1.{random.randint(2, 254)}",
-                    "user_agent": "Mozilla/5.0...",
-                    "timestamp": now - timedelta(seconds=i * 30),
-                }
-            )
-
-        # App Logs
-        levels = ["INFO", "DEBUG", "WARNING", "ERROR"]
-        msgs = [
-            "Worker thread started",
-            "DB Connection pool initialized",
-            "Cache miss on key: user_meta",
-            "Service heartbeat detected",
-        ]
-        for i in range(15):
-            app_logs_store.append(
-                {
-                    "id": str(uuid.uuid4()),
-                    "server_id": sid,
-                    "service": "api-gateway" if sid == "srv-01" else "db-monitor",
-                    "level": random.choice(levels),
-                    "message": random.choice(msgs),
-                    "timestamp": now - timedelta(seconds=i * 45),
-                }
-            )
-
-
-pre_populate()
 
 # --- Ingestion Endpoints ---
 
 
+@app.post("/register", status_code=201)
+async def register_server(data: ServerIn):
+    try:
+        server_info = data.model_dump()
+        server_info["last_seen"] = datetime.utcnow().isoformat()
+        db.register_server(server_info)
+        return {"status": "registered", "id": data.id}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/ingest/metrics", status_code=201)
 async def ingest_metrics(data: MetricIn):
-    metrics_store.append(data.dict())
-    if len(metrics_store) > 5000:
-        metrics_store.pop(0)
-    return {"status": "accepted", "id": str(uuid.uuid4())}
+    try:
+        db.save_metric(data.model_dump())
+        return {"status": "accepted", "id": str(uuid.uuid4())}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/ingest/logs/web", status_code=201)
 async def ingest_web_logs(data: WebLogIn):
-    log_entry = data.dict()
-    log_entry["id"] = str(uuid.uuid4())
-    web_logs_store.append(log_entry)
-    return {"status": "indexed", "id": log_entry["id"]}
+    try:
+        log_entry = data.model_dump()
+        db.save_log(log_entry, "web")
+        return {"status": "indexed", "id": str(uuid.uuid4())}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/ingest/logs/app", status_code=201)
 async def ingest_app_logs(data: AppLogIn):
-    log_entry = data.dict()
-    log_entry["id"] = str(uuid.uuid4())
-    app_logs_store.append(log_entry)
-    return {"status": "indexed", "id": log_entry["id"]}
+    try:
+        log_entry = data.model_dump()
+        db.save_log(log_entry, "app")
+        return {"status": "indexed", "id": str(uuid.uuid4())}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Query Endpoints ---
@@ -176,35 +125,43 @@ async def ingest_app_logs(data: AppLogIn):
 
 @app.get("/query/servers")
 async def get_servers():
-    # Return as list for easier frontend mapping
-    return list(servers_registry.values())
+    try:
+        return db.get_all_servers()
+    except Exception as e:
+        print(f"DB Error: {e}")
+        return []
 
 
 @app.get("/query/metrics/{server_id}")
 async def get_server_metrics(server_id: str, limit: int = 30):
-    logs = [m for m in metrics_store if m["server_id"] == server_id]
-    return sorted(logs, key=lambda x: x["timestamp"])[-limit:]
+    try:
+        return db.get_server_metrics(server_id, limit)
+    except Exception as e:
+        print(f"DB Error: {e}")
+        return []
 
 
 @app.get("/query/logs/app")
 async def get_app_logs(server_id: Optional[str] = None, limit: int = 50):
-    logs = app_logs_store
-    if server_id:
-        logs = [l for l in logs if l["server_id"] == server_id]
-    return sorted(logs, key=lambda x: x["timestamp"], reverse=True)[:limit]
+    try:
+        return db.get_logs("app", server_id, limit)
+    except Exception as e:
+        print(f"DB Error: {e}")
+        return []
 
 
 @app.get("/query/logs/web")
 async def get_web_logs(server_id: Optional[str] = None, limit: int = 50):
-    logs = web_logs_store
-    if server_id:
-        logs = [l for l in logs if l["server_id"] == server_id]
-    return sorted(logs, key=lambda x: x["timestamp"], reverse=True)[:limit]
+    try:
+        return db.get_logs("web", server_id, limit)
+    except Exception as e:
+        print(f"DB Error: {e}")
+        return []
 
 
 @app.get("/health")
 async def health_check():
-    return {"status": "online", "engine": "FastAPI", "uptime": "up"}
+    return {"status": "online", "engine": "FastAPI + DynamoDB", "uptime": "up"}
 
 
 if __name__ == "__main__":

@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"regexp"
+	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -15,8 +18,9 @@ import (
 	"github.com/hpcloud/tail"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
-	"github.com/shirou/gopsutil/v3/net"
+	gopsutilnet "github.com/shirou/gopsutil/v3/net"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,6 +29,15 @@ type Config struct {
 	BackendURL string   `yaml:"backend_url"`
 	Interval   int      `yaml:"interval"`
 	LogFiles   []string `yaml:"log_files"`
+}
+
+type ServerPayload struct {
+	ID           string `json:"id"`
+	Hostname     string `json:"hostname"`
+	IP           string `json:"ip"`
+	OS           string `json:"os"`
+	Status       string `json:"status"`
+	AgentVersion string `json:"agentVersion"`
 }
 
 type MetricPayload struct {
@@ -67,13 +80,44 @@ func loadConfig(path string) (*Config, error) {
 	return &cfg, err
 }
 
+func registerServer(cfg *Config) {
+	hostname, _ := os.Hostname()
+
+	// Get outbound IP logic
+	ip := "unknown"
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err == nil {
+		localAddr := conn.LocalAddr().(*net.UDPAddr)
+		ip = localAddr.IP.String()
+		conn.Close()
+	}
+
+	info, _ := host.Info()
+	osInfo := fmt.Sprintf("%s %s", info.Platform, info.PlatformVersion)
+	if info.Platform == "" {
+		osInfo = runtime.GOOS
+	}
+
+	payload := ServerPayload{
+		ID:           cfg.ServerID,
+		Hostname:     hostname,
+		IP:           ip,
+		OS:           osInfo,
+		Status:       "active",
+		AgentVersion: "v1.0.0",
+	}
+
+	log.Printf("Registering server: %+v", payload)
+	sendData(cfg.BackendURL+"/register", payload)
+}
+
 func collectMetrics(cfg *Config) {
 	ticker := time.NewTicker(time.Duration(cfg.Interval) * time.Second)
 	for range ticker.C {
 		c, _ := cpu.Percent(0, false)
 		m, _ := mem.VirtualMemory()
 		d, _ := disk.Usage("/")
-		n, _ := net.IOCounters(false)
+		n, _ := gopsutilnet.IOCounters(false) // Use aliased gopsutilnet
 
 		payload := MetricPayload{
 			ServerID:   cfg.ServerID,
@@ -167,6 +211,7 @@ func main() {
 	}
 
 	log.Printf("Sentinel Agent starting for server: %s", cfg.ServerID)
+	registerServer(cfg)
 
 	go collectMetrics(cfg)
 
