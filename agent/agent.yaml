@@ -1,5 +1,5 @@
 backend_url: "http://localhost:8000"
 interval: 15
 log_files:
-  - "/var/log/nginx/access.log"
+  - "/Users/ayo/log/access.log"
   - "/var/log/syslog"
