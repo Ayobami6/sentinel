@@ -68,7 +68,11 @@ type AppLogPayload struct {
 
 // Simple regex for Nginx/Apache Combined Log Format with extra response time
 // format: $remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" $request_time
-var webLogRegex = regexp.MustCompile(`^(\S+) \S+ \S+ \[(.*?)\] "(\S+) (\S+) \S+" (\d{3}) \d+ ".*?" "(.*?)"(?: (\d+))?`)
+// Format: Host "Method Path Protocol" Status RequestTime
+// 172.68.229.185 "GET /api/v1/carts/ HTTP/1.1" 400 0.002
+var webLogRegex = regexp.MustCompile(`^(\S+) "(\S+) (\S+) \S+" (\d+) (\S+)`)
+
+
 
 func loadConfig(path string) (*Config, error) {
 	file, err := os.ReadFile(path)
@@ -147,23 +151,20 @@ func tailLogs(cfg *Config, filePath string) {
 		matches := webLogRegex.FindStringSubmatch(line.Text)
 		if matches != nil {
 			// It's a web log
-			status, _ := strconv.Atoi(matches[5])
-			respTime := 0
-			if matches[7] != "" {
-				respTime, _ = strconv.Atoi(matches[7])
-			} else {
-				// Default or random for demo if not in logs
-				respTime = 50 + (status % 100)
-			}
+			// 1: Host, 2: Method, 3: Path, 4: Status, 5: RequestTime (seconds)
+			status, _ := strconv.Atoi(matches[4])
+			
+			respTimeSeconds, _ := strconv.ParseFloat(matches[5], 64)
+			respTimeMs := int(respTimeSeconds * 1000)
 
 			payload := WebLogPayload{
 				ServerID:     cfg.ServerID,
-				Method:       matches[3],
-				Path:         matches[4],
+				Method:       matches[2],
+				Path:         matches[3],
 				Status:       status,
-				ResponseTime: respTime,
+				ResponseTime: respTimeMs,
 				IP:           matches[1],
-				UserAgent:    matches[6],
+				UserAgent:    "unknown", // User agent not in this log format
 			}
 			sendData(cfg.BackendURL+"/ingest/logs/web", payload)
 		} else {
