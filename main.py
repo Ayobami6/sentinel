@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import random
 
@@ -52,22 +52,57 @@ metrics_store = []
 web_logs_store = []
 app_logs_store = []
 servers_registry = {
-    "srv-01": {"hostname": "prod-api-01", "ip": "10.0.1.45", "os": "Ubuntu 22.04", "status": "healthy"},
-    "srv-02": {"hostname": "prod-db-master", "ip": "10.0.1.52", "os": "Debian 11", "status": "warning"},
+    "srv-01": {"id": "srv-01", "hostname": "prod-api-01", "ip": "10.0.1.45", "os": "Ubuntu 22.04", "status": "healthy", "agentVersion": "v1.2.4"},
+    "srv-02": {"id": "srv-02", "hostname": "prod-db-master", "ip": "10.0.1.52", "os": "Debian 11", "status": "warning", "agentVersion": "v1.2.4"},
 }
 
-# Pre-populate some data for visual effect
-for sid in servers_registry:
-    for i in range(20):
-        metrics_store.append({
-            "server_id": sid,
-            "cpu": random.uniform(10, 50),
-            "memory": random.uniform(40, 70),
-            "disk": 65,
-            "network_in": random.uniform(100, 500),
-            "network_out": random.uniform(50, 300),
-            "timestamp": datetime.utcnow()
-        })
+# Pre-populate data
+def pre_populate():
+    now = datetime.utcnow()
+    paths = ['/api/v1/auth', '/api/v2/users', '/static/logo.png', '/api/v1/billing', '/health']
+    
+    for sid in servers_registry:
+        # Metrics
+        for i in range(30):
+            metrics_store.append({
+                "server_id": sid,
+                "cpu": random.uniform(10, 50) if sid == "srv-01" else random.uniform(50, 90),
+                "memory": random.uniform(40, 70),
+                "disk": 65,
+                "network_in": random.uniform(100, 500),
+                "network_out": random.uniform(50, 300),
+                "timestamp": now - timedelta(minutes=i)
+            })
+        
+        # Web Logs
+        for i in range(20):
+            status = random.choice([200, 200, 201, 404, 500])
+            web_logs_store.append({
+                "id": str(uuid.uuid4()),
+                "server_id": sid,
+                "method": random.choice(["GET", "POST"]),
+                "path": random.choice(paths),
+                "status": status,
+                "response_time": random.randint(50, 400),
+                "ip": f"192.168.1.{random.randint(2, 254)}",
+                "user_agent": "Mozilla/5.0...",
+                "timestamp": now - timedelta(seconds=i * 30)
+            })
+
+        # App Logs
+        levels = ["INFO", "DEBUG", "WARNING", "ERROR"]
+        msgs = ["Worker thread started", "DB Connection pool initialized", "Cache miss on key: user_meta", "Service heartbeat detected"]
+        for i in range(15):
+            app_logs_store.append({
+                "id": str(uuid.uuid4()),
+                "server_id": sid,
+                "service": "api-gateway" if sid == "srv-01" else "db-monitor",
+                "level": random.choice(levels),
+                "message": random.choice(msgs),
+                "timestamp": now - timedelta(seconds=i * 45)
+            })
+
+pre_populate()
 
 # --- Ingestion Endpoints ---
 
@@ -95,7 +130,8 @@ async def ingest_app_logs(data: AppLogIn):
 
 @app.get("/query/servers")
 async def get_servers():
-    return servers_registry
+    # Return as list for easier frontend mapping
+    return list(servers_registry.values())
 
 @app.get("/query/metrics/{server_id}")
 async def get_server_metrics(server_id: str, limit: int = 30):
@@ -105,6 +141,13 @@ async def get_server_metrics(server_id: str, limit: int = 30):
 @app.get("/query/logs/app")
 async def get_app_logs(server_id: Optional[str] = None, limit: int = 50):
     logs = app_logs_store
+    if server_id:
+        logs = [l for l in logs if l["server_id"] == server_id]
+    return sorted(logs, key=lambda x: x["timestamp"], reverse=True)[:limit]
+
+@app.get("/query/logs/web")
+async def get_web_logs(server_id: Optional[str] = None, limit: int = 50):
+    logs = web_logs_store
     if server_id:
         logs = [l for l in logs if l["server_id"] == server_id]
     return sorted(logs, key=lambda x: x["timestamp"], reverse=True)[:limit]

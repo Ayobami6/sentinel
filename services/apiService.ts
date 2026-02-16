@@ -13,19 +13,42 @@ export const sentinelApi = {
     }
   },
 
-  async getServers(): Promise<Record<string, any>> {
+  async getServers(): Promise<Server[]> {
     const res = await fetch(`${API_BASE}/query/servers`);
     if (!res.ok) throw new Error('Failed to fetch servers');
-    return res.json();
+    const data = await res.json();
+    return data.map((s: any) => ({
+      ...s,
+      lastSeen: new Date().toISOString(),
+      metrics: [], // Metrics are fetched separately per server detail usually
+    }));
   },
 
   async getAppLogs(serverId?: string): Promise<AppLog[]> {
-    const url = serverId 
+    const url = serverId && serverId !== 'all'
       ? `${API_BASE}/query/logs/app?server_id=${serverId}`
       : `${API_BASE}/query/logs/app`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to fetch logs');
-    return res.json();
+    if (!res.ok) throw new Error('Failed to fetch app logs');
+    const data = await res.json();
+    return data.map((l: any) => ({
+      ...l,
+      serverId: l.server_id,
+    }));
+  },
+
+  async getWebLogs(serverId?: string): Promise<WebLog[]> {
+    const url = serverId && serverId !== 'all'
+      ? `${API_BASE}/query/logs/web?server_id=${serverId}`
+      : `${API_BASE}/query/logs/web`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to fetch web logs');
+    const data = await res.json();
+    return data.map((l: any) => ({
+      ...l,
+      serverId: l.server_id,
+      severity: l.status >= 500 ? 'error' : l.status >= 400 ? 'warn' : 'info'
+    }));
   },
 
   async getServerMetrics(serverId: string): Promise<ServerMetric[]> {

@@ -57,7 +57,7 @@ const MiniMetricCard = ({ label, value, unit, icon: Icon, colorClass }: { label:
   </div>
 );
 
-const ServerContextBar = ({ selectedId, onSelect }: { selectedId: string | 'all', onSelect: (id: string | 'all') => void }) => (
+const ServerContextBar = ({ servers, selectedId, onSelect }: { servers: Server[], selectedId: string | 'all', onSelect: (id: string | 'all') => void }) => (
   <div className="flex items-center gap-2 p-1 bg-slate-900/50 border border-slate-700/50 rounded-xl overflow-x-auto no-scrollbar">
     <button 
       onClick={() => onSelect('all')}
@@ -65,7 +65,7 @@ const ServerContextBar = ({ selectedId, onSelect }: { selectedId: string | 'all'
     >
       All Infrastructure
     </button>
-    {MOCK_SERVERS.map(s => (
+    {servers.map(s => (
       <button 
         key={s.id}
         onClick={() => onSelect(s.id)}
@@ -81,6 +81,12 @@ const ServerContextBar = ({ selectedId, onSelect }: { selectedId: string | 'all'
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<ViewType>('overview');
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
+  
+  // Application Data State
+  const [servers, setServers] = useState<Server[]>(MOCK_SERVERS);
+  const [webLogs, setWebLogs] = useState<WebLog[]>(MOCK_WEB_LOGS);
+  const [appLogs, setAppLogs] = useState<AppLog[]>(MOCK_APP_LOGS);
+  
   const [serverMetrics, setServerMetrics] = useState<ServerMetric[]>([]);
   const [serverFilter, setServerFilter] = useState<string | 'all'>('all');
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -89,16 +95,46 @@ const App: React.FC = () => {
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Check backend health
-  useEffect(() => {
-    const checkApi = async () => {
+  // Sync with API
+  const syncWithApi = useCallback(async () => {
+    try {
       const isUp = await sentinelApi.checkHealth();
       setBackendOnline(isUp);
-    };
-    checkApi();
-    const interval = setInterval(checkApi, 10000);
-    return () => clearInterval(interval);
+      
+      if (isUp) {
+        const [apiServers, apiAppLogs, apiWebLogs] = await Promise.all([
+          sentinelApi.getServers(),
+          sentinelApi.getAppLogs(),
+          sentinelApi.getWebLogs()
+        ]);
+
+        // Merge latest metrics into servers list if missing
+        const serversWithLatestMetrics = await Promise.all(apiServers.map(async (s) => {
+           const metrics = await sentinelApi.getServerMetrics(s.id);
+           return { ...s, metrics };
+        }));
+
+        setServers(serversWithLatestMetrics);
+        setAppLogs(apiAppLogs);
+        setWebLogs(apiWebLogs);
+      } else {
+        // Revert to mock if backend drops
+        setServers(MOCK_SERVERS);
+        setAppLogs(MOCK_APP_LOGS);
+        setWebLogs(MOCK_WEB_LOGS);
+      }
+      setLastRefreshed(new Date());
+    } catch (e) {
+      console.error("Sync failed", e);
+      setBackendOnline(false);
+    }
   }, []);
+
+  useEffect(() => {
+    syncWithApi();
+    const interval = setInterval(syncWithApi, 10000);
+    return () => clearInterval(interval);
+  }, [syncWithApi]);
 
   // Fetch or simulate metrics for Server Detail
   const refreshDetailData = useCallback(async () => {
@@ -152,12 +188,12 @@ const App: React.FC = () => {
   }, [activeView, selectedServer, refreshDetailData]);
 
   const filteredAppLogs = useMemo(() => 
-    serverFilter === 'all' ? MOCK_APP_LOGS : MOCK_APP_LOGS.filter(l => l.serverId === serverFilter),
-  [serverFilter]);
+    serverFilter === 'all' ? appLogs : appLogs.filter(l => l.serverId === serverFilter),
+  [serverFilter, appLogs]);
 
   const filteredWebLogs = useMemo(() => 
-    serverFilter === 'all' ? MOCK_WEB_LOGS : MOCK_WEB_LOGS.filter(l => l.serverId === serverFilter),
-  [serverFilter]);
+    serverFilter === 'all' ? webLogs : webLogs.filter(l => l.serverId === serverFilter),
+  [serverFilter, webLogs]);
 
   const rpsData = useMemo(() => {
     const buckets: Record<string, number> = {};
@@ -222,7 +258,7 @@ const App: React.FC = () => {
     setIsAiLoading(true);
     const contextStr = serverFilter === 'all' 
       ? 'All Servers' 
-      : `Server: ${MOCK_SERVERS.find(s => s.id === serverFilter)?.hostname || 'Unknown'}`;
+      : `Server: ${servers.find(s => s.id === serverFilter)?.hostname || 'Unknown'}`;
     const report = await analyzeLogsWithAI([...filteredWebLogs, ...filteredAppLogs], contextStr);
     setAiReport(report || "No analysis available.");
     setIsAiLoading(false);
@@ -233,12 +269,15 @@ const App: React.FC = () => {
       <div className="flex justify-between items-end">
         <div>
           <h2 className="text-3xl font-extrabold text-white tracking-tight">Fleet Overview</h2>
-          <p className="text-slate-400 text-sm mt-1">Direct monitoring of {MOCK_SERVERS.length} active nodes across your private network.</p>
+          <p className="text-slate-400 text-sm mt-1">Direct monitoring of {servers.length} active nodes across your network.</p>
         </div>
         <div className="flex gap-3">
-          <button className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg border border-slate-700 transition-all text-sm font-medium">
-            <RefreshCw size={16} />
-            <span>Sync Agents</span>
+          <button 
+            onClick={syncWithApi}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg border border-slate-700 transition-all text-sm font-medium"
+          >
+            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+            <span>Sync Fleet</span>
           </button>
         </div>
       </div>
@@ -253,8 +292,8 @@ const App: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 gap-6">
-            {MOCK_SERVERS.map(server => {
-              const latest = server.metrics[server.metrics.length - 1];
+            {servers.map(server => {
+              const latest = server.metrics?.[server.metrics.length - 1] || { cpu: 0, memory: 0, disk: 0, networkIn: 0, networkOut: 0 };
               return (
                 <div 
                   key={server.id} 
@@ -336,7 +375,7 @@ const App: React.FC = () => {
               <h4 className="font-bold">Sentinel AI</h4>
             </div>
             <p className="text-blue-100 text-xs mb-6 font-medium leading-relaxed">
-              Analyze all system telemetry to identify root causes and performance patterns across your private cloud.
+              Analyze current log streams to identify root causes and patterns across your fleet.
             </p>
             <button 
               onClick={handleAiAnalysis}
@@ -376,7 +415,7 @@ const App: React.FC = () => {
             </button>
           </div>
         </div>
-        <ServerContextBar selectedId={serverFilter} onSelect={setServerFilter} />
+        <ServerContextBar servers={servers} selectedId={serverFilter} onSelect={setServerFilter} />
       </div>
 
       {aiReport && (
@@ -385,7 +424,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2 mb-4 text-blue-400 font-bold text-sm">
             <Bot size={18} /> 
             <span className="tracking-wide uppercase">Sentinel AI Analysis</span>
-            <span className="text-slate-500 font-medium normal-case ml-1">— {serverFilter === 'all' ? 'Fleet-wide' : MOCK_SERVERS.find(s=>s.id===serverFilter)?.hostname}</span>
+            <span className="text-slate-500 font-medium normal-case ml-1">— {serverFilter === 'all' ? 'Fleet-wide' : servers.find(s=>s.id===serverFilter)?.hostname}</span>
           </div>
           <div className="text-slate-300 text-sm prose prose-invert max-w-none whitespace-pre-line leading-relaxed">
             {aiReport}
@@ -402,7 +441,7 @@ const App: React.FC = () => {
         </div>
         <div className="max-h-[600px] overflow-y-auto">
           {filteredAppLogs.length > 0 ? filteredAppLogs.map((log) => {
-            const server = MOCK_SERVERS.find(s => s.id === log.serverId);
+            const server = servers.find(s => s.id === log.serverId);
             return (
               <div key={log.id} className="grid grid-cols-12 gap-2 p-3 border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
                 <div className="col-span-2 text-slate-500 mono text-[11px]">{new Date(log.timestamp).toLocaleTimeString()}</div>
@@ -438,7 +477,7 @@ const App: React.FC = () => {
             <h2 className="text-2xl font-bold text-white tracking-tight">Web Insights</h2>
             <p className="text-slate-400 text-sm">HTTP metrics analyzed from web server access logs.</p>
           </div>
-          <ServerContextBar selectedId={serverFilter} onSelect={setServerFilter} />
+          <ServerContextBar servers={servers} selectedId={serverFilter} onSelect={setServerFilter} />
         </div>
 
         {filteredWebLogs.length > 0 ? (
@@ -482,7 +521,7 @@ const App: React.FC = () => {
               <div className="lg:col-span-2 bg-slate-800 border border-slate-700 p-6 rounded-xl">
                 <h3 className="text-slate-100 font-bold mb-6 flex items-center gap-2">
                   <Timer size={18} className="text-blue-400" />
-                  Average Response Time by Endpoint (ms)
+                  Average Response Time (ms)
                 </h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
@@ -535,7 +574,7 @@ const App: React.FC = () => {
                 </thead>
                 <tbody>
                   {filteredWebLogs.slice(0, 15).map((row, i) => {
-                    const server = MOCK_SERVERS.find(s => s.id === row.serverId);
+                    const server = servers.find(s => s.id === row.serverId);
                     return (
                       <tr key={i} className="border-b border-slate-700/50 hover:bg-slate-700/20">
                         <td className="p-3 text-slate-500">{new Date(row.timestamp).toLocaleTimeString()}</td>
@@ -614,22 +653,12 @@ const App: React.FC = () => {
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex justify-center gap-8 mt-4">
-                 <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-blue-500 rounded-sm"></div>
-                    <span className="text-xs text-slate-400">CPU Usage</span>
-                 </div>
-                 <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-emerald-500 rounded-sm"></div>
-                    <span className="text-xs text-slate-400">RAM Usage</span>
-                 </div>
-              </div>
             </div>
           </div>
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
-             <h4 className="text-white font-bold mb-4 flex items-center gap-2"><Terminal size={16} className="text-slate-400" /> Recent Node Activity</h4>
+             <h4 className="text-white font-bold mb-4 flex items-center gap-2"><Terminal size={16} className="text-slate-400" /> Node Activity</h4>
              <div className="space-y-4">
-                {MOCK_APP_LOGS.filter(l => l.serverId === selectedServer.id).slice(0, 10).map((log, i) => (
+                {appLogs.filter(l => l.serverId === selectedServer.id).slice(0, 10).map((log, i) => (
                   <div key={i} className="text-[10px] border-l border-slate-700 pl-3 py-1">
                     <p className="text-slate-500 font-mono mb-0.5">{new Date(log.timestamp).toLocaleTimeString()}</p>
                     <p className="text-slate-200 line-clamp-1">{log.message}</p>
@@ -648,8 +677,8 @@ const App: React.FC = () => {
         <div className="inline-flex items-center justify-center p-4 bg-blue-500/10 rounded-2xl mb-2">
           <Settings size={40} className="text-blue-500" />
         </div>
-        <h2 className="text-3xl font-bold text-white tracking-tight">Backend & Agent Deployment</h2>
-        <p className="text-slate-400">Sentinel uses a FastAPI ingestion engine for high-throughput telemetry storage.</p>
+        <h2 className="text-3xl font-bold text-white tracking-tight">Deployment & Integration</h2>
+        <p className="text-slate-400">Manage your Sentinel Agent fleet and API endpoints.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -660,9 +689,9 @@ const App: React.FC = () => {
           <div className="space-y-3">
             {[
               { path: '/ingest/metrics', m: 'POST', desc: 'System health data' },
-              { path: '/ingest/logs/web', m: 'POST', desc: 'Access logs (Nginx/App)' },
-              { path: '/query/metrics/{id}', m: 'GET', desc: 'Time-series node stats' },
-              { path: '/query/servers', m: 'GET', desc: 'Fleet list' },
+              { path: '/ingest/logs/web', m: 'POST', desc: 'Web server logs' },
+              { path: '/query/logs/web', m: 'GET', desc: 'Fetch web log history' },
+              { path: '/query/servers', m: 'GET', desc: 'Fleet inventory' },
             ].map((route, i) => (
               <div key={i} className="flex flex-col gap-1 p-3 bg-slate-950 rounded-xl border border-slate-700/50">
                 <div className="flex justify-between">
@@ -677,15 +706,15 @@ const App: React.FC = () => {
 
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6">
            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <ServerIcon size={20} className="text-indigo-400" /> Agent Install
+            <ServerIcon size={20} className="text-indigo-400" /> Agent Configuration
           </h3>
           <div className="bg-slate-950 p-4 rounded-xl border border-slate-700 mono text-[11px] text-blue-400 space-y-1">
-             <div className="text-slate-600"># Fetch private keys</div>
-             <div>curl -sL https://apt.sentinel.io/key.gpg | sudo apt-key add -</div>
-             <div className="pt-2 text-slate-600"># Install daemon</div>
-             <div>sudo apt update && sudo apt install sentinel-agent -y</div>
+             <div className="text-slate-600"># sentinel-agent.yaml</div>
+             <div>server_id: "prod-api-01"</div>
+             <div>backend_url: "http://sentinel-hub:8000"</div>
+             <div>poll_interval: "15s"</div>
           </div>
-          <p className="mt-4 text-xs text-slate-500 leading-relaxed">Agents are pre-configured to ship data to the FastAPI engine at <code>http://sentinel-api:8000</code>.</p>
+          <p className="mt-4 text-xs text-slate-500 leading-relaxed">Ensure agents have network visibility to the FastAPI hub on port 8000.</p>
         </div>
       </div>
     </div>
@@ -725,7 +754,7 @@ const App: React.FC = () => {
                 <span>Ingest Engine</span>
                 <div className={`h-2 w-2 rounded-full ${backendOnline ? 'bg-emerald-500 shadow-lg shadow-emerald-500/50' : 'bg-rose-500'}`}></div>
              </div>
-             <div className="text-[10px] mono text-slate-600">API: http://localhost:8000</div>
+             <div className="text-[10px] mono text-slate-600">{backendOnline ? 'ONLINE' : 'MOCK MODE'}</div>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center gap-3">
             <div className="h-10 w-10 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-white text-sm shadow-lg">ADM</div>
