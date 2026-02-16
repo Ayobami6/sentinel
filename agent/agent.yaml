@@ -1,0 +1,7 @@
+
+server_id: "prod-server-01"
+backend_url: "http://your-sentinel-hub:8000"
+interval: 15
+log_files:
+  - "/var/log/nginx/access.log"
+  - "/var/log/syslog"
