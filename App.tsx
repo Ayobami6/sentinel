@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Terminal, 
@@ -88,9 +88,18 @@ const App: React.FC = () => {
     serverFilter === 'all' ? MOCK_WEB_LOGS : MOCK_WEB_LOGS.filter(l => l.serverId === serverFilter),
   [serverFilter]);
 
+  // Clear report when filter or view changes to ensure context remains accurate
+  useEffect(() => {
+    setAiReport(null);
+  }, [serverFilter, activeView]);
+
   const handleAiAnalysis = async () => {
     setIsAiLoading(true);
-    const report = await analyzeLogsWithAI([...filteredWebLogs, ...filteredAppLogs]);
+    const contextStr = serverFilter === 'all' 
+      ? 'All Servers' 
+      : `Server: ${MOCK_SERVERS.find(s => s.id === serverFilter)?.hostname || 'Unknown'}`;
+      
+    const report = await analyzeLogsWithAI([...filteredWebLogs, ...filteredAppLogs], contextStr);
     setAiReport(report || "No analysis available.");
     setIsAiLoading(false);
   };
@@ -234,9 +243,12 @@ const App: React.FC = () => {
                 className="bg-slate-800 border border-slate-700 text-slate-200 pl-10 pr-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-64"
               />
             </div>
-            <button onClick={handleAiAnalysis} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+            <button 
+              onClick={handleAiAnalysis} 
+              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20"
+            >
               {isAiLoading ? <RefreshCw className="animate-spin" size={16} /> : <Bot size={16} />}
-              AI Analyze
+              AI Analyze {serverFilter === 'all' ? 'All' : 'Server'}
             </button>
           </div>
         </div>
@@ -244,12 +256,16 @@ const App: React.FC = () => {
       </div>
 
       {aiReport && (
-        <div className="bg-slate-800 border border-blue-500/30 p-4 rounded-xl relative">
-          <button onClick={() => setAiReport(null)} className="absolute top-4 right-4 text-slate-500 hover:text-slate-300">×</button>
-          <div className="flex items-center gap-2 mb-3 text-blue-400 font-bold text-sm">
-            <Bot size={16} /> SENTINEL AI ANALYSIS ({serverFilter === 'all' ? 'All Servers' : MOCK_SERVERS.find(s=>s.id===serverFilter)?.hostname})
+        <div className="bg-slate-800 border border-blue-500/30 p-5 rounded-xl relative shadow-2xl animate-in zoom-in-95 duration-200">
+          <button onClick={() => setAiReport(null)} className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 p-1 hover:bg-slate-700 rounded-lg transition-colors">×</button>
+          <div className="flex items-center gap-2 mb-4 text-blue-400 font-bold text-sm">
+            <Bot size={18} /> 
+            <span className="tracking-wide uppercase">Sentinel AI Analysis</span>
+            <span className="text-slate-500 font-medium normal-case ml-1">— {serverFilter === 'all' ? 'Fleet-wide' : MOCK_SERVERS.find(s=>s.id===serverFilter)?.hostname}</span>
           </div>
-          <div className="text-slate-300 text-sm prose prose-invert max-w-none whitespace-pre-line leading-relaxed">{aiReport}</div>
+          <div className="text-slate-300 text-sm prose prose-invert max-w-none whitespace-pre-line leading-relaxed">
+            {aiReport}
+          </div>
         </div>
       )}
 
@@ -429,7 +445,7 @@ const App: React.FC = () => {
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
              <h4 className="text-white font-bold mb-4 flex items-center gap-2"><Terminal size={16} className="text-slate-400" /> Recent Node Activity</h4>
              <div className="space-y-4">
-                {filteredAppLogs.filter(l => l.serverId === selectedServer.id).slice(0, 10).map((log, i) => (
+                {MOCK_APP_LOGS.filter(l => l.serverId === selectedServer.id).slice(0, 10).map((log, i) => (
                   <div key={i} className="text-[10px] border-l border-slate-700 pl-3 py-1">
                     <p className="text-slate-500 font-mono mb-0.5">{new Date(log.timestamp).toLocaleTimeString()}</p>
                     <p className="text-slate-200 line-clamp-1">{log.message}</p>
