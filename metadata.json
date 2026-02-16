@@ -1,0 +1,5 @@
+{
+  "name": "Sentinel - Full-Stack Observability",
+  "description": "A comprehensive server and application monitoring dashboard providing real-time metrics, log visualization, and AI-powered insights for web servers and application logs.",
+  "requestFramePermissions": []
+}
