@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 from datetime import datetime
 import uuid
+import random
 
 app = FastAPI(title="Sentinel Ingest API", version="1.0.0")
 
@@ -47,7 +48,6 @@ class AppLogIn(BaseModel):
     timestamp: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 # --- In-Memory Storage (MVP) ---
-# In a production environment, these would be ClickHouse, PostgreSQL, or TimescaleDB.
 metrics_store = []
 web_logs_store = []
 app_logs_store = []
@@ -56,13 +56,25 @@ servers_registry = {
     "srv-02": {"hostname": "prod-db-master", "ip": "10.0.1.52", "os": "Debian 11", "status": "warning"},
 }
 
+# Pre-populate some data for visual effect
+for sid in servers_registry:
+    for i in range(20):
+        metrics_store.append({
+            "server_id": sid,
+            "cpu": random.uniform(10, 50),
+            "memory": random.uniform(40, 70),
+            "disk": 65,
+            "network_in": random.uniform(100, 500),
+            "network_out": random.uniform(50, 300),
+            "timestamp": datetime.utcnow()
+        })
+
 # --- Ingestion Endpoints ---
 
 @app.post("/ingest/metrics", status_code=201)
 async def ingest_metrics(data: MetricIn):
     metrics_store.append(data.dict())
-    # Keep store size manageable for MVP
-    if len(metrics_store) > 1000: metrics_store.pop(0)
+    if len(metrics_store) > 5000: metrics_store.pop(0)
     return {"status": "accepted", "id": str(uuid.uuid4())}
 
 @app.post("/ingest/logs/web", status_code=201)
@@ -84,6 +96,11 @@ async def ingest_app_logs(data: AppLogIn):
 @app.get("/query/servers")
 async def get_servers():
     return servers_registry
+
+@app.get("/query/metrics/{server_id}")
+async def get_server_metrics(server_id: str, limit: int = 30):
+    logs = [m for m in metrics_store if m["server_id"] == server_id]
+    return sorted(logs, key=lambda x: x["timestamp"])[-limit:]
 
 @app.get("/query/logs/app")
 async def get_app_logs(server_id: Optional[str] = None, limit: int = 50):

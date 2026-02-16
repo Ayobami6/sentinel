@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   LayoutDashboard, 
   Terminal, 
@@ -19,11 +19,14 @@ import {
   ExternalLink,
   Filter,
   Globe,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Clock,
+  TrendingUp,
+  Timer
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, BarChart, Bar } from 'recharts';
 import { MOCK_SERVERS, MOCK_WEB_LOGS, MOCK_APP_LOGS } from './services/mockData';
-import { ViewType, Server, WebLog, AppLog } from './types';
+import { ViewType, Server, WebLog, AppLog, ServerMetric } from './types';
 import { analyzeLogsWithAI } from './services/geminiService';
 import { sentinelApi } from './services/apiService';
 
@@ -78,11 +81,15 @@ const ServerContextBar = ({ selectedId, onSelect }: { selectedId: string | 'all'
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<ViewType>('overview');
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
+  const [serverMetrics, setServerMetrics] = useState<ServerMetric[]>([]);
   const [serverFilter, setServerFilter] = useState<string | 'all'>('all');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [backendOnline, setBackendOnline] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Check backend health
   useEffect(() => {
     const checkApi = async () => {
       const isUp = await sentinelApi.checkHealth();
@@ -93,6 +100,57 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Fetch or simulate metrics for Server Detail
+  const refreshDetailData = useCallback(async () => {
+    if (!selectedServer) return;
+    
+    setIsRefreshing(true);
+    try {
+      if (backendOnline) {
+        const metrics = await sentinelApi.getServerMetrics(selectedServer.id);
+        if (metrics.length > 0) {
+          setServerMetrics(metrics);
+        } else {
+            setServerMetrics(selectedServer.metrics);
+        }
+      } else {
+        setServerMetrics(prev => {
+          const last = prev[prev.length - 1] || { cpu: 20, memory: 40, disk: 65, networkIn: 100, networkOut: 50 };
+          const next = {
+            timestamp: new Date().toISOString(),
+            cpu: Math.max(10, Math.min(95, last.cpu + (Math.random() * 10 - 5))),
+            memory: Math.max(20, Math.min(90, last.memory + (Math.random() * 6 - 3))),
+            disk: last.disk,
+            networkIn: Math.floor(Math.random() * 500) + 100,
+            networkOut: Math.floor(Math.random() * 300) + 50,
+          };
+          return [...prev.slice(-29), next];
+        });
+      }
+      setLastRefreshed(new Date());
+    } catch (e) {
+      console.error("Failed to refresh detail data", e);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 800);
+    }
+  }, [selectedServer, backendOnline]);
+
+  useEffect(() => {
+    if (selectedServer) {
+        setServerMetrics(selectedServer.metrics);
+        refreshDetailData();
+    }
+  }, [selectedServer, refreshDetailData]);
+
+  useEffect(() => {
+    if (activeView === 'server-detail' && selectedServer) {
+      const interval = setInterval(() => {
+        refreshDetailData();
+      }, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [activeView, selectedServer, refreshDetailData]);
+
   const filteredAppLogs = useMemo(() => 
     serverFilter === 'all' ? MOCK_APP_LOGS : MOCK_APP_LOGS.filter(l => l.serverId === serverFilter),
   [serverFilter]);
@@ -100,6 +158,61 @@ const App: React.FC = () => {
   const filteredWebLogs = useMemo(() => 
     serverFilter === 'all' ? MOCK_WEB_LOGS : MOCK_WEB_LOGS.filter(l => l.serverId === serverFilter),
   [serverFilter]);
+
+  const rpsData = useMemo(() => {
+    const buckets: Record<string, number> = {};
+    const windowSeconds = 10;
+    filteredWebLogs.forEach(log => {
+      const date = new Date(log.timestamp);
+      date.setSeconds(Math.floor(date.getSeconds() / windowSeconds) * windowSeconds);
+      date.setMilliseconds(0);
+      const key = date.toISOString();
+      buckets[key] = (buckets[key] || 0) + 1;
+    });
+    return Object.entries(buckets)
+      .map(([timestamp, count]) => ({
+        timestamp,
+        rps: parseFloat((count / windowSeconds).toFixed(2))
+      }))
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }, [filteredWebLogs]);
+
+  const latencyData = useMemo(() => {
+    const buckets: Record<string, { sum: number, count: number }> = {};
+    const windowSeconds = 30;
+    filteredWebLogs.forEach(log => {
+      const date = new Date(log.timestamp);
+      date.setSeconds(Math.floor(date.getSeconds() / windowSeconds) * windowSeconds);
+      date.setMilliseconds(0);
+      const key = date.toISOString();
+      if (!buckets[key]) buckets[key] = { sum: 0, count: 0 };
+      buckets[key].sum += log.responseTime;
+      buckets[key].count += 1;
+    });
+    return Object.entries(buckets)
+      .map(([timestamp, data]) => ({
+        timestamp,
+        latency: Math.round(data.sum / data.count)
+      }))
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }, [filteredWebLogs]);
+
+  const endpointStats = useMemo(() => {
+    const stats: Record<string, { sum: number, count: number }> = {};
+    filteredWebLogs.forEach(log => {
+      if (!stats[log.path]) stats[log.path] = { sum: 0, count: 0 };
+      stats[log.path].sum += log.responseTime;
+      stats[log.path].count += 1;
+    });
+    return Object.entries(stats)
+      .map(([path, data]) => ({
+        path,
+        avgLatency: Math.round(data.sum / data.count),
+        count: data.count
+      }))
+      .sort((a, b) => b.avgLatency - a.avgLatency)
+      .slice(0, 5);
+  }, [filteredWebLogs]);
 
   useEffect(() => {
     setAiReport(null);
@@ -110,7 +223,6 @@ const App: React.FC = () => {
     const contextStr = serverFilter === 'all' 
       ? 'All Servers' 
       : `Server: ${MOCK_SERVERS.find(s => s.id === serverFilter)?.hostname || 'Unknown'}`;
-      
     const report = await analyzeLogsWithAI([...filteredWebLogs, ...filteredAppLogs], contextStr);
     setAiReport(report || "No analysis available.");
     setIsAiLoading(false);
@@ -182,8 +294,8 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <MiniMetricCard label="CPU Usage" value={latest.cpu} unit="%" icon={Cpu} colorClass="text-blue-400" />
-                    <MiniMetricCard label="Memory" value={latest.memory} unit="%" icon={Activity} colorClass="text-emerald-400" />
+                    <MiniMetricCard label="CPU Usage" value={latest.cpu.toFixed(1)} unit="%" icon={Cpu} colorClass="text-blue-400" />
+                    <MiniMetricCard label="Memory" value={latest.memory.toFixed(1)} unit="%" icon={Activity} colorClass="text-emerald-400" />
                     <MiniMetricCard label="Disk Space" value={latest.disk} unit="%" icon={Database} colorClass="text-amber-400" />
                     <MiniMetricCard label="Network" value={(latest.networkIn + latest.networkOut).toFixed(1)} unit="Mbps" icon={Zap} colorClass="text-purple-400" />
                   </div>
@@ -317,7 +429,6 @@ const App: React.FC = () => {
       acc[cat] = (acc[cat] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-
     const pieData = Object.keys(statusCounts).map(k => ({ name: k, value: statusCounts[k] }));
 
     return (
@@ -335,18 +446,18 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 bg-slate-800 border border-slate-700 p-6 rounded-xl">
                 <h3 className="text-slate-100 font-bold mb-6 flex items-center gap-2">
-                  <Globe size={18} className="text-blue-500" />
-                  Response Latency (ms) - {serverFilter === 'all' ? 'Fleet Wide' : 'Single Node'}
+                  <TrendingUp size={18} className="text-emerald-500" />
+                  Requests Per Second (RPS)
                 </h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={filteredWebLogs.slice(0, 30).reverse()}>
+                    <BarChart data={rpsData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="timestamp" tickFormatter={(val) => new Date(val).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} stroke="#64748b" fontSize={10} />
-                      <YAxis stroke="#64748b" fontSize={10} />
-                      <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} />
-                      <Area type="monotone" dataKey="responseTime" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} />
-                    </AreaChart>
+                      <XAxis dataKey="timestamp" tickFormatter={(val) => new Date(val).toLocaleTimeString([], {minute:'2-digit', second:'2-digit'})} stroke="#64748b" fontSize={10} />
+                      <YAxis stroke="#64748b" fontSize={10} label={{ value: 'req/s', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }} />
+                      <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} labelFormatter={(label) => new Date(label).toLocaleTimeString()} />
+                      <Bar dataKey="rps" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
@@ -354,7 +465,7 @@ const App: React.FC = () => {
               <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl">
                 <h3 className="text-slate-100 font-bold mb-6 flex items-center gap-2">
                   <BarChart3 size={18} className="text-blue-500" />
-                  Status Distribution
+                  Status Codes
                 </h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
@@ -365,6 +476,44 @@ const App: React.FC = () => {
                       <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} />
                     </PieChart>
                   </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="lg:col-span-2 bg-slate-800 border border-slate-700 p-6 rounded-xl">
+                <h3 className="text-slate-100 font-bold mb-6 flex items-center gap-2">
+                  <Timer size={18} className="text-blue-400" />
+                  Average Response Time by Endpoint (ms)
+                </h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={latencyData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                      <XAxis dataKey="timestamp" tickFormatter={(val) => new Date(val).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} stroke="#64748b" fontSize={10} />
+                      <YAxis stroke="#64748b" fontSize={10} unit="ms" />
+                      <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} labelFormatter={(label) => new Date(label).toLocaleTimeString()} />
+                      <Area type="monotone" dataKey="latency" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl">
+                <h3 className="text-slate-100 font-bold mb-6 flex items-center gap-2">
+                  <Zap size={18} className="text-rose-400" />
+                  Top Slowest Paths
+                </h3>
+                <div className="space-y-4">
+                  {endpointStats.map((stat, i) => (
+                    <div key={i} className="flex flex-col gap-1">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-slate-300 font-mono truncate max-w-[140px]">{stat.path}</span>
+                        <span className="text-rose-400 font-bold">{stat.avgLatency}ms</span>
+                      </div>
+                      <div className="w-full bg-slate-900 rounded-full h-1.5">
+                        <div className="bg-rose-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, (stat.avgLatency / 500) * 100)}%` }}></div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -419,18 +568,31 @@ const App: React.FC = () => {
     if (!selectedServer) return null;
     return (
       <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-        <div className="flex items-center gap-4">
-          <button onClick={() => setActiveView('overview')} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg border border-slate-700 transition-colors">
-            <ChevronRight size={20} className="rotate-180" />
-          </button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-bold text-white tracking-tight">{selectedServer.hostname}</h2>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
-                selectedServer.status === 'healthy' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-              }`}>{selectedServer.status}</span>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setActiveView('overview')} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg border border-slate-700 transition-colors">
+              <ChevronRight size={20} className="rotate-180" />
+            </button>
+            <div>
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-bold text-white tracking-tight">{selectedServer.hostname}</h2>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                  selectedServer.status === 'healthy' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                }`}>{selectedServer.status}</span>
+              </div>
+              <p className="text-slate-500 text-xs mono">Internal IP: {selectedServer.ip} • OS: {selectedServer.os}</p>
             </div>
-            <p className="text-slate-500 text-xs mono">Internal IP: {selectedServer.ip} • OS: {selectedServer.os}</p>
+          </div>
+          <div className="flex items-center gap-4 bg-slate-900/50 p-2 pr-4 rounded-xl border border-slate-800 self-start md:self-center">
+            <div className={`p-2 rounded-lg ${isRefreshing ? 'bg-blue-600/20 text-blue-400' : 'bg-slate-800 text-slate-500'}`}>
+              <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Auto-Refresh (15s)</span>
+              <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
+                <Clock size={10} /> Last update: {lastRefreshed.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second: '2-digit'})}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -442,15 +604,25 @@ const App: React.FC = () => {
               </h3>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={selectedServer.metrics}>
+                  <AreaChart data={serverMetrics}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                     <XAxis dataKey="timestamp" tickFormatter={(val) => new Date(val).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} stroke="#64748b" fontSize={10} />
-                    <YAxis stroke="#64748b" fontSize={10} unit="%" />
+                    <YAxis stroke="#64748b" fontSize={10} unit="%" domain={[0, 100]} />
                     <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} />
-                    <Area type="monotone" dataKey="cpu" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={2} />
-                    <Area type="monotone" dataKey="memory" stroke="#10b981" fill="#10b981" fillOpacity={0.1} strokeWidth={2} />
+                    <Area type="monotone" dataKey="cpu" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={2} animationDuration={1000} />
+                    <Area type="monotone" dataKey="memory" stroke="#10b981" fill="#10b981" fillOpacity={0.1} strokeWidth={2} animationDuration={1000} />
                   </AreaChart>
                 </ResponsiveContainer>
+              </div>
+              <div className="flex justify-center gap-8 mt-4">
+                 <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-blue-500 rounded-sm"></div>
+                    <span className="text-xs text-slate-400">CPU Usage</span>
+                 </div>
+                 <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-emerald-500 rounded-sm"></div>
+                    <span className="text-xs text-slate-400">RAM Usage</span>
+                 </div>
               </div>
             </div>
           </div>
@@ -489,6 +661,7 @@ const App: React.FC = () => {
             {[
               { path: '/ingest/metrics', m: 'POST', desc: 'System health data' },
               { path: '/ingest/logs/web', m: 'POST', desc: 'Access logs (Nginx/App)' },
+              { path: '/query/metrics/{id}', m: 'GET', desc: 'Time-series node stats' },
               { path: '/query/servers', m: 'GET', desc: 'Fleet list' },
             ].map((route, i) => (
               <div key={i} className="flex flex-col gap-1 p-3 bg-slate-950 rounded-xl border border-slate-700/50">

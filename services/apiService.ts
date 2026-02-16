@@ -28,6 +28,20 @@ export const sentinelApi = {
     return res.json();
   },
 
+  async getServerMetrics(serverId: string): Promise<ServerMetric[]> {
+    const res = await fetch(`${API_BASE}/query/metrics/${serverId}`);
+    if (!res.ok) throw new Error('Failed to fetch metrics');
+    const data = await res.json();
+    return data.map((m: any) => ({
+        timestamp: m.timestamp,
+        cpu: m.cpu,
+        memory: m.memory,
+        disk: m.disk,
+        networkIn: m.network_in,
+        networkOut: m.network_out
+    }));
+  },
+
   async ingestMetric(metric: Partial<ServerMetric> & { server_id: string }) {
     return fetch(`${API_BASE}/ingest/metrics`, {
       method: 'POST',
