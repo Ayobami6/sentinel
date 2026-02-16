@@ -2,10 +2,12 @@ services:
   api:
     build: .
     ports:
-      - "8000:8000"
+      - "6600:8000"
     environment:
       - AWS_REGION
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
+
+    # command: python main.py
     volumes:
       - .:/app
