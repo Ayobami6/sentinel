@@ -18,12 +18,14 @@ import {
   Bot,
   ExternalLink,
   Filter,
-  Globe
+  Globe,
+  Link as LinkIcon
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { MOCK_SERVERS, MOCK_WEB_LOGS, MOCK_APP_LOGS } from './services/mockData';
 import { ViewType, Server, WebLog, AppLog } from './types';
 import { analyzeLogsWithAI } from './services/geminiService';
+import { sentinelApi } from './services/apiService';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
 
@@ -79,6 +81,17 @@ const App: React.FC = () => {
   const [serverFilter, setServerFilter] = useState<string | 'all'>('all');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiReport, setAiReport] = useState<string | null>(null);
+  const [backendOnline, setBackendOnline] = useState(false);
+
+  useEffect(() => {
+    const checkApi = async () => {
+      const isUp = await sentinelApi.checkHealth();
+      setBackendOnline(isUp);
+    };
+    checkApi();
+    const interval = setInterval(checkApi, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   const filteredAppLogs = useMemo(() => 
     serverFilter === 'all' ? MOCK_APP_LOGS : MOCK_APP_LOGS.filter(l => l.serverId === serverFilter),
@@ -88,7 +101,6 @@ const App: React.FC = () => {
     serverFilter === 'all' ? MOCK_WEB_LOGS : MOCK_WEB_LOGS.filter(l => l.serverId === serverFilter),
   [serverFilter]);
 
-  // Clear report when filter or view changes to ensure context remains accurate
   useEffect(() => {
     setAiReport(null);
   }, [serverFilter, activeView]);
@@ -464,24 +476,43 @@ const App: React.FC = () => {
         <div className="inline-flex items-center justify-center p-4 bg-blue-500/10 rounded-2xl mb-2">
           <Settings size={40} className="text-blue-500" />
         </div>
-        <h2 className="text-3xl font-bold text-white tracking-tight">Agent Deployment</h2>
-        <p className="text-slate-400">Sentinel agents are compiled for high-performance monitoring on Unix environments.</p>
+        <h2 className="text-3xl font-bold text-white tracking-tight">Backend & Agent Deployment</h2>
+        <p className="text-slate-400">Sentinel uses a FastAPI ingestion engine for high-throughput telemetry storage.</p>
       </div>
 
-      <div className="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl">
-        <div className="p-8 space-y-8">
-          <section className="space-y-4">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-blue-600 text-xs font-bold flex items-center justify-center shadow-lg shadow-blue-500/30">1</span>
-              Install the Go Agent
-            </h3>
-            <div className="bg-slate-950 p-5 rounded-2xl border border-slate-700 mono text-sm text-blue-400 shadow-inner">
-              <div>curl -sL https://apt.sentinel.io/key.gpg | sudo apt-key add -</div>
-              <div>echo "deb [arch=amd64] https://apt.sentinel.io/ sentinel main" | sudo tee /etc/apt/sources.list.d/sentinel.list</div>
-              <div className="mt-2 text-slate-600"># Install the monitoring daemon</div>
-              <div>sudo apt update && sudo apt install sentinel-agent -y</div>
-            </div>
-          </section>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <LinkIcon size={20} className="text-blue-400" /> API Schema
+          </h3>
+          <div className="space-y-3">
+            {[
+              { path: '/ingest/metrics', m: 'POST', desc: 'System health data' },
+              { path: '/ingest/logs/web', m: 'POST', desc: 'Access logs (Nginx/App)' },
+              { path: '/query/servers', m: 'GET', desc: 'Fleet list' },
+            ].map((route, i) => (
+              <div key={i} className="flex flex-col gap-1 p-3 bg-slate-950 rounded-xl border border-slate-700/50">
+                <div className="flex justify-between">
+                   <span className="text-[10px] font-bold text-emerald-400 tracking-widest">{route.m}</span>
+                   <span className="text-[10px] text-slate-500 mono">{route.path}</span>
+                </div>
+                <p className="text-[11px] text-slate-400">{route.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+           <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <ServerIcon size={20} className="text-indigo-400" /> Agent Install
+          </h3>
+          <div className="bg-slate-950 p-4 rounded-xl border border-slate-700 mono text-[11px] text-blue-400 space-y-1">
+             <div className="text-slate-600"># Fetch private keys</div>
+             <div>curl -sL https://apt.sentinel.io/key.gpg | sudo apt-key add -</div>
+             <div className="pt-2 text-slate-600"># Install daemon</div>
+             <div>sudo apt update && sudo apt install sentinel-agent -y</div>
+          </div>
+          <p className="mt-4 text-xs text-slate-500 leading-relaxed">Agents are pre-configured to ship data to the FastAPI engine at <code>http://sentinel-api:8000</code>.</p>
         </div>
       </div>
     </div>
@@ -516,6 +547,13 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-4 border-t border-slate-800">
+          <div className="mb-4 px-2">
+             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
+                <span>Ingest Engine</span>
+                <div className={`h-2 w-2 rounded-full ${backendOnline ? 'bg-emerald-500 shadow-lg shadow-emerald-500/50' : 'bg-rose-500'}`}></div>
+             </div>
+             <div className="text-[10px] mono text-slate-600">API: http://localhost:8000</div>
+          </div>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center gap-3">
             <div className="h-10 w-10 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-white text-sm shadow-lg">ADM</div>
             <div className="overflow-hidden">
