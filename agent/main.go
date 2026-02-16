@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -10,7 +9,6 @@ import (
 	"os/signal"
 	"regexp"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -156,6 +154,16 @@ func main() {
 	cfg, err := loadConfig(configPath)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
+	}
+
+	if cfg.ServerID == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Printf("Warning: could not get hostname: %v", err)
+			cfg.ServerID = "unknown-host"
+		} else {
+			cfg.ServerID = hostname
+		}
 	}
 
 	log.Printf("Sentinel Agent starting for server: %s", cfg.ServerID)
