@@ -47,6 +47,8 @@ export const sentinelApi = {
     return data.map((l: any) => ({
       ...l,
       serverId: l.server_id,
+      responseTime: l.response_time,
+      userAgent: l.user_agent,
       severity: l.status >= 500 ? 'error' : l.status >= 400 ? 'warn' : 'info'
     }));
   },
@@ -56,12 +58,12 @@ export const sentinelApi = {
     if (!res.ok) throw new Error('Failed to fetch metrics');
     const data = await res.json();
     return data.map((m: any) => ({
-        timestamp: m.timestamp,
-        cpu: m.cpu,
-        memory: m.memory,
-        disk: m.disk,
-        networkIn: m.network_in,
-        networkOut: m.network_out
+      timestamp: m.timestamp,
+      cpu: m.cpu,
+      memory: m.memory,
+      disk: m.disk,
+      networkIn: m.network_in,
+      networkOut: m.network_out
     }));
   },
 
