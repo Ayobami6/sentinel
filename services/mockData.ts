@@ -55,24 +55,27 @@ export const MOCK_SERVERS: Server[] = [
   }
 ];
 
-export const MOCK_WEB_LOGS: WebLog[] = Array.from({ length: 50 }).map((_, i) => {
+const SERVER_IDS = MOCK_SERVERS.map(s => s.id);
+
+export const MOCK_WEB_LOGS: WebLog[] = Array.from({ length: 80 }).map((_, i) => {
   const paths = ['/api/v1/auth', '/api/v2/users', '/static/logo.png', '/api/v1/billing', '/health'];
   const statusCodes = [200, 200, 201, 200, 404, 500, 301, 200, 200, 200];
   const statusCode = statusCodes[Math.floor(Math.random() * statusCodes.length)];
   return {
     id: `wlog-${i}`,
+    serverId: SERVER_IDS[Math.floor(Math.random() * SERVER_IDS.length)],
     timestamp: new Date(Date.now() - i * 15000).toISOString(),
     method: Math.random() > 0.8 ? 'POST' : 'GET',
     path: paths[Math.floor(Math.random() * paths.length)],
     status: statusCode,
     responseTime: Math.floor(Math.random() * 400) + 50,
     ip: `192.168.1.${Math.floor(Math.random() * 254)}`,
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)...',
+    userAgent: 'Mozilla/5.0...',
     severity: statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'info',
   };
 });
 
-export const MOCK_APP_LOGS: AppLog[] = Array.from({ length: 50 }).map((_, i) => {
+export const MOCK_APP_LOGS: AppLog[] = Array.from({ length: 100 }).map((_, i) => {
   const levels: AppLog['level'][] = ['INFO', 'INFO', 'DEBUG', 'WARNING', 'ERROR'];
   const level = levels[Math.floor(Math.random() * levels.length)];
   const messages = [
@@ -85,6 +88,7 @@ export const MOCK_APP_LOGS: AppLog[] = Array.from({ length: 50 }).map((_, i) => 
   ];
   return {
     id: `alog-${i}`,
+    serverId: SERVER_IDS[Math.floor(Math.random() * SERVER_IDS.length)],
     timestamp: new Date(Date.now() - i * 20000).toISOString(),
     service: Math.random() > 0.5 ? 'auth-service' : 'order-processor',
     level,

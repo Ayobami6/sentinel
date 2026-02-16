@@ -10,6 +10,7 @@ export interface ServerMetric {
 
 export interface WebLog {
   id: string;
+  serverId: string; // Added for server-based filtering
   timestamp: string;
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   path: string;
@@ -22,6 +23,7 @@ export interface WebLog {
 
 export interface AppLog {
   id: string;
+  serverId: string; // Added for server-based filtering
   timestamp: string;
   service: string;
   message: string;
