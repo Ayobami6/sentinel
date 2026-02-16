@@ -3,9 +3,9 @@ import { GoogleGenAI } from "@google/genai";
 import { AppLog, WebLog } from "../types";
 
 export const analyzeLogsWithAI = async (logs: (AppLog | WebLog)[], context: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   const logSample = JSON.stringify(logs.slice(0, 20));
-  
+
   const prompt = `You are an expert SRE (Site Reliability Engineer) monitoring a system called "Sentinel". 
   Analyze the following logs for the context: "${context}".
   Identify potential issues, performance bottlenecks, or security patterns. 
