@@ -335,7 +335,7 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     <MiniMetricCard label="CPU Usage" value={latest.cpu.toFixed(1)} unit="%" icon={Cpu} colorClass="text-blue-400" />
                     <MiniMetricCard label="Memory" value={latest.memory.toFixed(1)} unit="%" icon={Activity} colorClass="text-emerald-400" />
-                    <MiniMetricCard label="Disk Space" value={latest.disk} unit="%" icon={Database} colorClass="text-amber-400" />
+                    <MiniMetricCard label="Disk Space" value={latest.disk.toFixed(2)} unit="%" icon={Database} colorClass="text-amber-400" />
                     <MiniMetricCard label="Network" value={(latest.networkIn + latest.networkOut).toFixed(1)} unit="Mbps" icon={Zap} colorClass="text-purple-400" />
                   </div>
                 </div>
