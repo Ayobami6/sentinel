@@ -88,15 +88,16 @@ log_files:
 ## 🛠️ API Documentation
 
 ### Ingestion Endpoints
-- `POST /ingest/metrics`: System health telemetry.
-- `POST /ingest/logs/web`: Structured HTTP traffic data.
-- `POST /ingest/logs/app`: General application event logs.
+- `POST /v1/ingest/metrics`: System health telemetry.
+- `POST /v1/ingest/logs/web`: Structured HTTP traffic data.
+- `POST /v1/ingest/logs/app`: General application event logs.
 
-### Query Endpoints
-- `GET /query/servers`: List all registered nodes and metadata.
-- `GET /query/metrics/{server_id}`: Fetch historical time-series metrics.
-- `GET /query/logs/web`: Retrieve and filter HTTP traffic logs.
-- `GET /query/logs/app`: Retrieve and filter application event logs.
+## Query API (Frontend)
+
+- `GET /v1/query/servers`: List all registered nodes and metadata.
+- `GET /v1/query/metrics/{server_id}`: Fetch historical time-series metrics.
+- `GET /v1/query/logs/web`: Retrieve and filter HTTP traffic logs.
+- `GET /v1/query/logs/app`: Retrieve and filter application event logs.
 
 ---
 

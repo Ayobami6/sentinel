@@ -72,8 +72,6 @@ type AppLogPayload struct {
 // 172.68.229.185 "GET /api/v1/carts/ HTTP/1.1" 400 0.002
 var webLogRegex = regexp.MustCompile(`^(\S+) "(\S+) (\S+) \S+" (\d+) (\S+)`)
 
-
-
 func loadConfig(path string) (*Config, error) {
 	file, err := os.ReadFile(path)
 	if err != nil {
@@ -112,7 +110,7 @@ func registerServer(cfg *Config) {
 	}
 
 	log.Printf("Registering server: %+v", payload)
-	sendData(cfg.BackendURL+"/register", payload)
+	sendData(cfg.BackendURL+"/v1/register", payload)
 }
 
 func collectMetrics(cfg *Config) {
@@ -132,7 +130,7 @@ func collectMetrics(cfg *Config) {
 			NetworkOut: float64(n[0].BytesSent) / 1024 / 1024,
 		}
 
-		sendData(cfg.BackendURL+"/ingest/metrics", payload)
+		sendData(cfg.BackendURL+"/v1/ingest/metrics", payload)
 	}
 }
 
@@ -153,7 +151,7 @@ func tailLogs(cfg *Config, filePath string) {
 			// It's a web log
 			// 1: Host, 2: Method, 3: Path, 4: Status, 5: RequestTime (seconds)
 			status, _ := strconv.Atoi(matches[4])
-			
+
 			respTimeSeconds, _ := strconv.ParseFloat(matches[5], 64)
 			respTimeMs := int(respTimeSeconds * 1000)
 
@@ -166,7 +164,7 @@ func tailLogs(cfg *Config, filePath string) {
 				IP:           matches[1],
 				UserAgent:    "unknown", // User agent not in this log format
 			}
-			sendData(cfg.BackendURL+"/ingest/logs/web", payload)
+			sendData(cfg.BackendURL+"/v1/ingest/logs/web", payload)
 		} else {
 			// Treat as app log
 			payload := AppLogPayload{
@@ -175,7 +173,7 @@ func tailLogs(cfg *Config, filePath string) {
 				Level:    "INFO",
 				Message:  line.Text,
 			}
-			sendData(cfg.BackendURL+"/ingest/logs/app", payload)
+			sendData(cfg.BackendURL+"/v1/ingest/logs/app", payload)
 		}
 	}
 }

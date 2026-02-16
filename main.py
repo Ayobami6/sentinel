@@ -78,7 +78,7 @@ class ServerIn(BaseModel):
 # --- Ingestion Endpoints ---
 
 
-@app.post("/register", status_code=201)
+@app.post("/v1/register", status_code=201)
 async def register_server(data: ServerIn):
     try:
         server_info = data.model_dump()
@@ -90,7 +90,7 @@ async def register_server(data: ServerIn):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/ingest/metrics", status_code=201)
+@app.post("/v1/ingest/metrics", status_code=201)
 async def ingest_metrics(data: MetricIn):
     try:
         db.save_metric(data.model_dump())
@@ -100,7 +100,7 @@ async def ingest_metrics(data: MetricIn):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/ingest/logs/web", status_code=201)
+@app.post("/v1/ingest/logs/web", status_code=201)
 async def ingest_web_logs(data: WebLogIn):
     try:
         log_entry = data.model_dump()
@@ -110,7 +110,7 @@ async def ingest_web_logs(data: WebLogIn):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/ingest/logs/app", status_code=201)
+@app.post("/v1/ingest/logs/app", status_code=201)
 async def ingest_app_logs(data: AppLogIn):
     try:
         log_entry = data.model_dump()
@@ -123,7 +123,7 @@ async def ingest_app_logs(data: AppLogIn):
 # --- Query Endpoints ---
 
 
-@app.get("/query/servers")
+@app.get("/v1/query/servers")
 async def get_servers():
     try:
         return db.get_all_servers()
@@ -132,7 +132,7 @@ async def get_servers():
         return []
 
 
-@app.get("/query/metrics/{server_id}")
+@app.get("/v1/query/metrics/{server_id}")
 async def get_server_metrics(server_id: str, limit: int = 30):
     try:
         return db.get_server_metrics(server_id, limit)
@@ -141,7 +141,7 @@ async def get_server_metrics(server_id: str, limit: int = 30):
         return []
 
 
-@app.get("/query/logs/app")
+@app.get("/v1/query/logs/app")
 async def get_app_logs(server_id: Optional[str] = None, limit: int = 50):
     try:
         return db.get_logs("app", server_id, limit)
@@ -150,7 +150,7 @@ async def get_app_logs(server_id: Optional[str] = None, limit: int = 50):
         return []
 
 
-@app.get("/query/logs/web")
+@app.get("/v1/query/logs/web")
 async def get_web_logs(server_id: Optional[str] = None, limit: int = 50):
     try:
         return db.get_logs("web", server_id, limit)
@@ -159,7 +159,7 @@ async def get_web_logs(server_id: Optional[str] = None, limit: int = 50):
         return []
 
 
-@app.get("/health")
+@app.get("/v1/health")
 async def health_check():
     return {"status": "online", "engine": "FastAPI + DynamoDB", "uptime": "up"}
 

@@ -1,14 +1,14 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { 
-  LayoutDashboard, 
-  Terminal, 
-  Activity, 
-  Settings, 
-  Server as ServerIcon, 
-  ShieldCheck, 
-  AlertTriangle, 
-  Zap, 
+import {
+  LayoutDashboard,
+  Terminal,
+  Activity,
+  Settings,
+  Server as ServerIcon,
+  ShieldCheck,
+  AlertTriangle,
+  Zap,
   Search,
   ChevronRight,
   RefreshCw,
@@ -33,11 +33,10 @@ import { sentinelApi } from './services/apiService';
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }: { icon: any, label: string, active: boolean, onClick: () => void }) => (
-  <button 
+  <button
     onClick={onClick}
-    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-      active ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-    }`}
+    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+      }`}
   >
     <Icon size={20} />
     <span className="font-medium">{label}</span>
@@ -59,14 +58,14 @@ const MiniMetricCard = ({ label, value, unit, icon: Icon, colorClass }: { label:
 
 const ServerContextBar = ({ servers, selectedId, onSelect }: { servers: Server[], selectedId: string | 'all', onSelect: (id: string | 'all') => void }) => (
   <div className="flex items-center gap-2 p-1 bg-slate-900/50 border border-slate-700/50 rounded-xl overflow-x-auto no-scrollbar">
-    <button 
+    <button
       onClick={() => onSelect('all')}
       className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${selectedId === 'all' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-500 hover:text-slate-300'}`}
     >
       All Infrastructure
     </button>
     {servers.map(s => (
-      <button 
+      <button
         key={s.id}
         onClick={() => onSelect(s.id)}
         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${selectedId === s.id ? 'bg-slate-700 text-blue-400 border border-blue-500/30' : 'text-slate-500 hover:text-slate-300'}`}
@@ -81,12 +80,12 @@ const ServerContextBar = ({ servers, selectedId, onSelect }: { servers: Server[]
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<ViewType>('overview');
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
-  
+
   // Application Data State
   const [servers, setServers] = useState<Server[]>(MOCK_SERVERS);
   const [webLogs, setWebLogs] = useState<WebLog[]>(MOCK_WEB_LOGS);
   const [appLogs, setAppLogs] = useState<AppLog[]>(MOCK_APP_LOGS);
-  
+
   const [serverMetrics, setServerMetrics] = useState<ServerMetric[]>([]);
   const [serverFilter, setServerFilter] = useState<string | 'all'>('all');
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -100,7 +99,7 @@ const App: React.FC = () => {
     try {
       const isUp = await sentinelApi.checkHealth();
       setBackendOnline(isUp);
-      
+
       if (isUp) {
         const [apiServers, apiAppLogs, apiWebLogs] = await Promise.all([
           sentinelApi.getServers(),
@@ -110,8 +109,8 @@ const App: React.FC = () => {
 
         // Merge latest metrics into servers list if missing
         const serversWithLatestMetrics = await Promise.all(apiServers.map(async (s) => {
-           const metrics = await sentinelApi.getServerMetrics(s.id);
-           return { ...s, metrics };
+          const metrics = await sentinelApi.getServerMetrics(s.id);
+          return { ...s, metrics };
         }));
 
         setServers(serversWithLatestMetrics);
@@ -139,7 +138,7 @@ const App: React.FC = () => {
   // Fetch or simulate metrics for Server Detail
   const refreshDetailData = useCallback(async () => {
     if (!selectedServer) return;
-    
+
     setIsRefreshing(true);
     try {
       if (backendOnline) {
@@ -147,7 +146,7 @@ const App: React.FC = () => {
         if (metrics.length > 0) {
           setServerMetrics(metrics);
         } else {
-            setServerMetrics(selectedServer.metrics);
+          setServerMetrics(selectedServer.metrics);
         }
       } else {
         setServerMetrics(prev => {
@@ -173,8 +172,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (selectedServer) {
-        setServerMetrics(selectedServer.metrics);
-        refreshDetailData();
+      setServerMetrics(selectedServer.metrics);
+      refreshDetailData();
     }
   }, [selectedServer, refreshDetailData]);
 
@@ -187,13 +186,13 @@ const App: React.FC = () => {
     }
   }, [activeView, selectedServer, refreshDetailData]);
 
-  const filteredAppLogs = useMemo(() => 
+  const filteredAppLogs = useMemo(() =>
     serverFilter === 'all' ? appLogs : appLogs.filter(l => l.serverId === serverFilter),
-  [serverFilter, appLogs]);
+    [serverFilter, appLogs]);
 
-  const filteredWebLogs = useMemo(() => 
+  const filteredWebLogs = useMemo(() =>
     serverFilter === 'all' ? webLogs : webLogs.filter(l => l.serverId === serverFilter),
-  [serverFilter, webLogs]);
+    [serverFilter, webLogs]);
 
   const rpsData = useMemo(() => {
     const buckets: Record<string, number> = {};
@@ -256,8 +255,8 @@ const App: React.FC = () => {
 
   const handleAiAnalysis = async () => {
     setIsAiLoading(true);
-    const contextStr = serverFilter === 'all' 
-      ? 'All Servers' 
+    const contextStr = serverFilter === 'all'
+      ? 'All Servers'
       : `Server: ${servers.find(s => s.id === serverFilter)?.hostname || 'Unknown'}`;
     const report = await analyzeLogsWithAI([...filteredWebLogs, ...filteredAppLogs], contextStr);
     setAiReport(report || "No analysis available.");
@@ -272,7 +271,7 @@ const App: React.FC = () => {
           <p className="text-slate-400 text-sm mt-1">Direct monitoring of {servers.length} active nodes across your network.</p>
         </div>
         <div className="flex gap-3">
-          <button 
+          <button
             onClick={syncWithApi}
             className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-lg border border-slate-700 transition-all text-sm font-medium"
           >
@@ -295,17 +294,16 @@ const App: React.FC = () => {
             {servers.map(server => {
               const latest = server.metrics?.[server.metrics.length - 1] || { cpu: 0, memory: 0, disk: 0, networkIn: 0, networkOut: 0 };
               return (
-                <div 
-                  key={server.id} 
+                <div
+                  key={server.id}
                   className="group bg-slate-800/40 border border-slate-700/50 rounded-2xl p-6 hover:border-blue-500/50 hover:bg-slate-800/60 transition-all shadow-xl shadow-black/20"
                 >
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                     <div className="flex items-center gap-4">
-                      <div className={`p-3 rounded-xl ${
-                        server.status === 'healthy' ? 'bg-emerald-500/10 text-emerald-400' :
-                        server.status === 'warning' ? 'bg-amber-500/10 text-amber-400' :
-                        'bg-rose-500/10 text-rose-400'
-                      }`}>
+                      <div className={`p-3 rounded-xl ${server.status === 'healthy' ? 'bg-emerald-500/10 text-emerald-400' :
+                          server.status === 'warning' ? 'bg-amber-500/10 text-amber-400' :
+                            'bg-rose-500/10 text-rose-400'
+                        }`}>
                         <ServerIcon size={24} />
                       </div>
                       <div>
@@ -316,14 +314,13 @@ const App: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase border ${
-                        server.status === 'healthy' ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' :
-                        server.status === 'warning' ? 'bg-amber-500/5 border-amber-500/20 text-amber-400' :
-                        'bg-rose-500/5 border-rose-500/20 text-rose-400'
-                      }`}>
+                      <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase border ${server.status === 'healthy' ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' :
+                          server.status === 'warning' ? 'bg-amber-500/5 border-amber-500/20 text-amber-400' :
+                            'bg-rose-500/5 border-rose-500/20 text-rose-400'
+                        }`}>
                         {server.status}
                       </div>
-                      <button 
+                      <button
                         onClick={() => { setSelectedServer(server); setActiveView('server-detail'); }}
                         className="p-2 text-slate-500 hover:text-white hover:bg-slate-700 rounded-lg transition-all"
                       >
@@ -358,9 +355,8 @@ const App: React.FC = () => {
                 { type: 'warning', msg: 'Unusual spike in HTTP 500 on prod-api-01', time: '18m ago' },
               ].map((incident, i) => (
                 <div key={i} className="flex gap-3 group">
-                  <div className={`mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0 ${
-                    incident.type === 'critical' ? 'bg-rose-500 ring-4 ring-rose-500/10' : 'bg-amber-500 ring-4 ring-amber-500/10'
-                  }`}></div>
+                  <div className={`mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0 ${incident.type === 'critical' ? 'bg-rose-500 ring-4 ring-rose-500/10' : 'bg-amber-500 ring-4 ring-amber-500/10'
+                    }`}></div>
                   <div>
                     <p className="text-xs text-slate-200 font-semibold leading-tight mb-1">{incident.msg}</p>
                     <span className="text-[10px] text-slate-500 font-mono">{incident.time}</span>
@@ -377,7 +373,7 @@ const App: React.FC = () => {
             <p className="text-blue-100 text-xs mb-6 font-medium leading-relaxed">
               Analyze current log streams to identify root causes and patterns across your fleet.
             </p>
-            <button 
+            <button
               onClick={handleAiAnalysis}
               className="w-full bg-white hover:bg-blue-50 text-blue-800 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg flex items-center justify-center gap-2"
             >
@@ -400,14 +396,14 @@ const App: React.FC = () => {
           <div className="flex gap-2 w-full md:w-auto">
             <div className="relative flex-grow">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search messages..." 
+              <input
+                type="text"
+                placeholder="Search messages..."
                 className="bg-slate-800 border border-slate-700 text-slate-200 pl-10 pr-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-64"
               />
             </div>
-            <button 
-              onClick={handleAiAnalysis} 
+            <button
+              onClick={handleAiAnalysis}
               className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20"
             >
               {isAiLoading ? <RefreshCw className="animate-spin" size={16} /> : <Bot size={16} />}
@@ -422,9 +418,9 @@ const App: React.FC = () => {
         <div className="bg-slate-800 border border-blue-500/30 p-5 rounded-xl relative shadow-2xl animate-in zoom-in-95 duration-200">
           <button onClick={() => setAiReport(null)} className="absolute top-4 right-4 text-slate-500 hover:text-slate-300 p-1 hover:bg-slate-700 rounded-lg transition-colors">×</button>
           <div className="flex items-center gap-2 mb-4 text-blue-400 font-bold text-sm">
-            <Bot size={18} /> 
+            <Bot size={18} />
             <span className="tracking-wide uppercase">Sentinel AI Analysis</span>
-            <span className="text-slate-500 font-medium normal-case ml-1">— {serverFilter === 'all' ? 'Fleet-wide' : servers.find(s=>s.id===serverFilter)?.hostname}</span>
+            <span className="text-slate-500 font-medium normal-case ml-1">— {serverFilter === 'all' ? 'Fleet-wide' : servers.find(s => s.id === serverFilter)?.hostname}</span>
           </div>
           <div className="text-slate-300 text-sm prose prose-invert max-w-none whitespace-pre-line leading-relaxed">
             {aiReport}
@@ -447,9 +443,8 @@ const App: React.FC = () => {
                 <div className="col-span-2 text-slate-500 mono text-[11px]">{new Date(log.timestamp).toLocaleTimeString()}</div>
                 <div className="col-span-2 text-blue-400/80 text-[11px] font-bold truncate">{server?.hostname || 'Unknown'}</div>
                 <div className="col-span-1">
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                    log.level === 'ERROR' || log.level === 'CRITICAL' ? 'bg-rose-500/10 text-rose-400' : 'bg-blue-500/10 text-blue-400'
-                  }`}>{log.level}</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${log.level === 'ERROR' || log.level === 'CRITICAL' ? 'bg-rose-500/10 text-rose-400' : 'bg-blue-500/10 text-blue-400'
+                    }`}>{log.level}</span>
                 </div>
                 <div className="col-span-7 text-slate-400 text-xs truncate mono">{log.message}</div>
               </div>
@@ -492,7 +487,7 @@ const App: React.FC = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={rpsData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="timestamp" tickFormatter={(val) => new Date(val).toLocaleTimeString([], {minute:'2-digit', second:'2-digit'})} stroke="#64748b" fontSize={10} />
+                      <XAxis dataKey="timestamp" tickFormatter={(val) => new Date(val).toLocaleTimeString([], { minute: '2-digit', second: '2-digit' })} stroke="#64748b" fontSize={10} />
                       <YAxis stroke="#64748b" fontSize={10} label={{ value: 'req/s', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10 }} />
                       <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} labelFormatter={(label) => new Date(label).toLocaleTimeString()} />
                       <Bar dataKey="rps" fill="#10b981" radius={[4, 4, 0, 0]} />
@@ -527,7 +522,7 @@ const App: React.FC = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={latencyData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="timestamp" tickFormatter={(val) => new Date(val).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} stroke="#64748b" fontSize={10} />
+                      <XAxis dataKey="timestamp" tickFormatter={(val) => new Date(val).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} stroke="#64748b" fontSize={10} />
                       <YAxis stroke="#64748b" fontSize={10} unit="ms" />
                       <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} labelFormatter={(label) => new Date(label).toLocaleTimeString()} />
                       <Area type="monotone" dataKey="latency" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={2} />
@@ -615,9 +610,8 @@ const App: React.FC = () => {
             <div>
               <div className="flex items-center gap-3">
                 <h2 className="text-2xl font-bold text-white tracking-tight">{selectedServer.hostname}</h2>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
-                  selectedServer.status === 'healthy' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                }`}>{selectedServer.status}</span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${selectedServer.status === 'healthy' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                  }`}>{selectedServer.status}</span>
               </div>
               <p className="text-slate-500 text-xs mono">Internal IP: {selectedServer.ip} • OS: {selectedServer.os}</p>
             </div>
@@ -629,7 +623,7 @@ const App: React.FC = () => {
             <div className="flex flex-col">
               <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Auto-Refresh (15s)</span>
               <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
-                <Clock size={10} /> Last update: {lastRefreshed.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second: '2-digit'})}
+                <Clock size={10} /> Last update: {lastRefreshed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             </div>
           </div>
@@ -645,7 +639,7 @@ const App: React.FC = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={serverMetrics}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                    <XAxis dataKey="timestamp" tickFormatter={(val) => new Date(val).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} stroke="#64748b" fontSize={10} />
+                    <XAxis dataKey="timestamp" tickFormatter={(val) => new Date(val).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} stroke="#64748b" fontSize={10} />
                     <YAxis stroke="#64748b" fontSize={10} unit="%" domain={[0, 100]} />
                     <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} />
                     <Area type="monotone" dataKey="cpu" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={2} animationDuration={1000} />
@@ -656,15 +650,15 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-5">
-             <h4 className="text-white font-bold mb-4 flex items-center gap-2"><Terminal size={16} className="text-slate-400" /> Node Activity</h4>
-             <div className="space-y-4">
-                {appLogs.filter(l => l.serverId === selectedServer.id).slice(0, 10).map((log, i) => (
-                  <div key={i} className="text-[10px] border-l border-slate-700 pl-3 py-1">
-                    <p className="text-slate-500 font-mono mb-0.5">{new Date(log.timestamp).toLocaleTimeString()}</p>
-                    <p className="text-slate-200 line-clamp-1">{log.message}</p>
-                  </div>
-                ))}
-             </div>
+            <h4 className="text-white font-bold mb-4 flex items-center gap-2"><Terminal size={16} className="text-slate-400" /> Node Activity</h4>
+            <div className="space-y-4">
+              {appLogs.filter(l => l.serverId === selectedServer.id).slice(0, 10).map((log, i) => (
+                <div key={i} className="text-[10px] border-l border-slate-700 pl-3 py-1">
+                  <p className="text-slate-500 font-mono mb-0.5">{new Date(log.timestamp).toLocaleTimeString()}</p>
+                  <p className="text-slate-200 line-clamp-1">{log.message}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -688,15 +682,15 @@ const App: React.FC = () => {
           </h3>
           <div className="space-y-3">
             {[
-              { path: '/ingest/metrics', m: 'POST', desc: 'System health data' },
-              { path: '/ingest/logs/web', m: 'POST', desc: 'Web server logs' },
-              { path: '/query/logs/web', m: 'GET', desc: 'Fetch web log history' },
-              { path: '/query/servers', m: 'GET', desc: 'Fleet inventory' },
+              { path: '/v1/ingest/metrics', m: 'POST', desc: 'System health data' },
+              { path: '/v1/ingest/logs/web', m: 'POST', desc: 'Web server logs' },
+              { path: '/v1/query/logs/web', m: 'GET', desc: 'Fetch web log history' },
+              { path: '/v1/query/servers', m: 'GET', desc: 'Fleet inventory' },
             ].map((route, i) => (
               <div key={i} className="flex flex-col gap-1 p-3 bg-slate-950 rounded-xl border border-slate-700/50">
                 <div className="flex justify-between">
-                   <span className="text-[10px] font-bold text-emerald-400 tracking-widest">{route.m}</span>
-                   <span className="text-[10px] text-slate-500 mono">{route.path}</span>
+                  <span className="text-[10px] font-bold text-emerald-400 tracking-widest">{route.m}</span>
+                  <span className="text-[10px] text-slate-500 mono">{route.path}</span>
                 </div>
                 <p className="text-[11px] text-slate-400">{route.desc}</p>
               </div>
@@ -705,14 +699,14 @@ const App: React.FC = () => {
         </div>
 
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6">
-           <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
             <ServerIcon size={20} className="text-indigo-400" /> Agent Configuration
           </h3>
           <div className="bg-slate-950 p-4 rounded-xl border border-slate-700 mono text-[11px] text-blue-400 space-y-1">
-             <div className="text-slate-600"># sentinel-agent.yaml</div>
-             <div>server_id: "prod-api-01"</div>
-             <div>backend_url: "http://sentinel-hub:8000"</div>
-             <div>poll_interval: "15s"</div>
+            <div className="text-slate-600"># sentinel-agent.yaml</div>
+            <div>server_id: "prod-api-01"</div>
+            <div>backend_url: "http://sentinel-hub:8000"</div>
+            <div>poll_interval: "15s"</div>
           </div>
           <p className="mt-4 text-xs text-slate-500 leading-relaxed">Ensure agents have network visibility to the FastAPI hub on port 8000.</p>
         </div>
@@ -740,7 +734,7 @@ const App: React.FC = () => {
           </div>
           <h1 className="text-xl font-black text-white tracking-tighter uppercase">Sentinel</h1>
         </div>
-        
+
         <nav className="flex-grow px-4 space-y-1.5 mt-4">
           <SidebarItem icon={LayoutDashboard} label="Fleet Dashboard" active={activeView === 'overview' || activeView === 'server-detail'} onClick={() => setActiveView('overview')} />
           <SidebarItem icon={Terminal} label="Log Explorer" active={activeView === 'logs'} onClick={() => setActiveView('logs')} />
@@ -750,11 +744,11 @@ const App: React.FC = () => {
 
         <div className="p-4 border-t border-slate-800">
           <div className="mb-4 px-2">
-             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
-                <span>Ingest Engine</span>
-                <div className={`h-2 w-2 rounded-full ${backendOnline ? 'bg-emerald-500 shadow-lg shadow-emerald-500/50' : 'bg-rose-500'}`}></div>
-             </div>
-             <div className="text-[10px] mono text-slate-600">{backendOnline ? 'ONLINE' : 'MOCK MODE'}</div>
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
+              <span>Ingest Engine</span>
+              <div className={`h-2 w-2 rounded-full ${backendOnline ? 'bg-emerald-500 shadow-lg shadow-emerald-500/50' : 'bg-rose-500'}`}></div>
+            </div>
+            <div className="text-[10px] mono text-slate-600">{backendOnline ? 'ONLINE' : 'MOCK MODE'}</div>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex items-center gap-3">
             <div className="h-10 w-10 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-white text-sm shadow-lg">ADM</div>
