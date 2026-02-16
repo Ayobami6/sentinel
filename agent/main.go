@@ -4,12 +4,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -37,15 +38,26 @@ type MetricPayload struct {
 	NetworkOut float64 `json:"network_out"`
 }
 
-type LogPayload struct {
-	ServerID string `json:"server_id"`
-	Method   string `json:"method,omitempty"`
-	Path     string `json:"path,omitempty"`
-	Status   int    `json:"status,omitempty"`
-	Level    string `json:"level,omitempty"`
-	Message  string `json:"message"`
-	Service  string `json:"service"`
+type WebLogPayload struct {
+	ServerID     string `json:"server_id"`
+	Method       string `json:"method"`
+	Path         string `json:"path"`
+	Status       int    `json:"status"`
+	ResponseTime int    `json:"response_time"`
+	IP           string `json:"ip"`
+	UserAgent    string `json:"user_agent"`
 }
+
+type AppLogPayload struct {
+	ServerID string `json:"server_id"`
+	Service  string `json:"service"`
+	Level    string `json:"level"`
+	Message  string `json:"message"`
+}
+
+// Simple regex for Nginx/Apache Combined Log Format with extra response time
+// format: $remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" $request_time
+var webLogRegex = regexp.MustCompile(`^(\S+) \S+ \S+ \[(.*?)\] "(\S+) (\S+) \S+" (\d{3}) \d+ ".*?" "(.*?)"(?: (\d+))?`)
 
 func loadConfig(path string) (*Config, error) {
 	file, err := os.ReadFile(path)
@@ -70,8 +82,8 @@ func collectMetrics(cfg *Config) {
 			CPU:        c[0],
 			Memory:     m.UsedPercent,
 			Disk:       d.UsedPercent,
-			NetworkIn:  float64(n[0].BytesRecv) / 1024 / 1024, // MB
-			NetworkOut: float64(n[0].BytesSent) / 1024 / 1024, // MB
+			NetworkIn:  float64(n[0].BytesRecv) / 1024 / 1024,
+			NetworkOut: float64(n[0].BytesSent) / 1024 / 1024,
 		}
 
 		sendData(cfg.BackendURL+"/ingest/metrics", payload)
@@ -86,14 +98,42 @@ func tailLogs(cfg *Config, filePath string) {
 	}
 
 	for line := range t.Lines {
-		payload := LogPayload{
-			ServerID: cfg.ServerID,
-			Service:  "agent-tail",
-			Message:  line.Text,
+		if line.Text == "" {
+			continue
 		}
-		// In a real scenario, you'd regex the line to determine if it's a Web Log or App Log
-		endpoint := cfg.BackendURL + "/ingest/logs/app"
-		sendData(endpoint, payload)
+
+		matches := webLogRegex.FindStringSubmatch(line.Text)
+		if matches != nil {
+			// It's a web log
+			status, _ := strconv.Atoi(matches[5])
+			respTime := 0
+			if matches[7] != "" {
+				respTime, _ = strconv.Atoi(matches[7])
+			} else {
+				// Default or random for demo if not in logs
+				respTime = 50 + (status % 100)
+			}
+
+			payload := WebLogPayload{
+				ServerID:     cfg.ServerID,
+				Method:       matches[3],
+				Path:         matches[4],
+				Status:       status,
+				ResponseTime: respTime,
+				IP:           matches[1],
+				UserAgent:    matches[6],
+			}
+			sendData(cfg.BackendURL+"/ingest/logs/web", payload)
+		} else {
+			// Treat as app log
+			payload := AppLogPayload{
+				ServerID: cfg.ServerID,
+				Service:  "agent-tail",
+				Level:    "INFO",
+				Message:  line.Text,
+			}
+			sendData(cfg.BackendURL+"/ingest/logs/app", payload)
+		}
 	}
 }
 
@@ -110,7 +150,7 @@ func sendData(url string, data interface{}) {
 func main() {
 	configPath := "/etc/sentinel/agent.yaml"
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		configPath = "agent.yaml" // Fallback to local for dev
+		configPath = "agent.yaml"
 	}
 
 	cfg, err := loadConfig(configPath)
@@ -126,7 +166,6 @@ func main() {
 		go tailLogs(cfg, logFile)
 	}
 
-	// Handle graceful shutdown
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
