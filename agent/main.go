@@ -25,10 +25,10 @@ import (
 )
 
 type Config struct {
-	ServerID   string   `yaml:"server_id"`
-	BackendURL string   `yaml:"backend_url"`
-	Interval   int      `yaml:"interval"`
-	LogFiles   []string `yaml:"log_files"`
+	ServerID   string              `yaml:"server_id"`
+	BackendURL string              `yaml:"backend_url"`
+	Interval   int                 `yaml:"interval"`
+	Logs       map[string][]string `yaml:"logs"`
 }
 
 type ServerPayload struct {
@@ -69,8 +69,8 @@ type AppLogPayload struct {
 // Simple regex for Nginx/Apache Combined Log Format with extra response time
 // format: $remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" $request_time
 // Format: Host "Method Path Protocol" Status RequestTime
-// 172.68.229.185 "GET /api/v1/carts/ HTTP/1.1" 400 0.002
-var webLogRegex = regexp.MustCompile(`^(\S+) "(\S+) (\S+) \S+" (\d+) (\S+)`)
+// 172.68.229.185 - - [17/Feb/2026:04:18:57 +0000] "POST /talent/application_with_cv/be2c5fd8-9396-45bb-a22d-bbfc119b8958/ HTTP/1.1" 400 67 "-" "python-requests/2.32.3"
+var webLogRegex = regexp.MustCompile(`^(\S+) \S+ \S+ \[.*?\] "(\S+) (\S+) \S+" (\d+) \d+ ".*?" "(.*?)"`)
 
 func loadConfig(path string) (*Config, error) {
 	file, err := os.ReadFile(path)
@@ -134,7 +134,7 @@ func collectMetrics(cfg *Config) {
 	}
 }
 
-func tailLogs(cfg *Config, filePath string) {
+func tailLogs(cfg *Config, filePath string, logType string) {
 	t, err := tail.TailFile(filePath, tail.Config{Follow: true, ReOpen: true})
 	if err != nil {
 		log.Printf("Error tailing %s: %v", filePath, err)
@@ -146,30 +146,31 @@ func tailLogs(cfg *Config, filePath string) {
 			continue
 		}
 
-		matches := webLogRegex.FindStringSubmatch(line.Text)
-		if matches != nil {
-			// It's a web log
-			// 1: Host, 2: Method, 3: Path, 4: Status, 5: RequestTime (seconds)
-			status, _ := strconv.Atoi(matches[4])
+		if logType == "web" {
+			matches := webLogRegex.FindStringSubmatch(line.Text)
+			if matches != nil {
+				// 1: IP, 2: Method, 3: Path, 4: Status, 5: UserAgent
+				status, _ := strconv.Atoi(matches[4])
 
-			respTimeSeconds, _ := strconv.ParseFloat(matches[5], 64)
-			respTimeMs := int(respTimeSeconds * 1000)
+				// Standard Nginx format doesn't have request_time by default, so 0
+				respTimeMs := 0
 
-			payload := WebLogPayload{
-				ServerID:     cfg.ServerID,
-				Method:       matches[2],
-				Path:         matches[3],
-				Status:       status,
-				ResponseTime: respTimeMs,
-				IP:           matches[1],
-				UserAgent:    "unknown", // User agent not in this log format
+				payload := WebLogPayload{
+					ServerID:     cfg.ServerID,
+					Method:       matches[2],
+					Path:         matches[3],
+					Status:       status,
+					ResponseTime: respTimeMs,
+					IP:           matches[1],
+					UserAgent:    matches[5],
+				}
+				sendData(cfg.BackendURL+"/v1/ingest/logs/web", payload)
 			}
-			sendData(cfg.BackendURL+"/v1/ingest/logs/web", payload)
 		} else {
 			// Treat as app log
 			payload := AppLogPayload{
 				ServerID: cfg.ServerID,
-				Service:  "agent-tail",
+				Service:  logType, // Use logType ("app", "db", etc) as service name
 				Level:    "INFO",
 				Message:  line.Text,
 			}
@@ -214,8 +215,10 @@ func main() {
 
 	go collectMetrics(cfg)
 
-	for _, logFile := range cfg.LogFiles {
-		go tailLogs(cfg, logFile)
+	for logType, files := range cfg.Logs {
+		for _, file := range files {
+			go tailLogs(cfg, file, logType)
+		}
 	}
 
 	sigs := make(chan os.Signal, 1)
