@@ -1,0 +1,13 @@
+[Unit]
+Description=Sentinel System Monitoring Agent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sentinel-agent
+Restart=on-failure
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

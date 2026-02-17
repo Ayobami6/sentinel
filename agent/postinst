@@ -1,0 +1,13 @@
+#!/bin/bash
+# Post-installation script for sentinel-agent
+
+# Reload systemd daemon to recognize the new service
+systemctl daemon-reload
+
+# Enable the service to start on boot
+systemctl enable sentinel-agent
+
+# Start the service immediately
+systemctl restart sentinel-agent
+
+echo "Sentinel Agent installed and started successfully."
