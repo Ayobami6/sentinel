@@ -3,7 +3,7 @@ import os
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 from decimal import Decimal
 
 
@@ -18,7 +18,8 @@ class SentinelDB:
             aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
         )
         self.metrics_table = self.dynamodb.Table("SentinelMetrics")
-        self.logs_table = self.dynamodb.Table("SentinelLogs")
+        self.app_logs_table = self.dynamodb.Table("SentinelAppLogs")
+        self.web_logs_table = self.dynamodb.Table("SentinelWebLogs")
         self.servers_table = self.dynamodb.Table("SentinelServers")
         self._known_servers = set()
 
@@ -40,9 +41,23 @@ class SentinelDB:
                 ProvisionedThroughput={"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
             )
 
-        if "SentinelLogs" not in existing_tables:
+        if "SentinelAppLogs" not in existing_tables:
             self.dynamodb.create_table(
-                TableName="SentinelLogs",
+                TableName="SentinelAppLogs",
+                KeySchema=[
+                    {"AttributeName": "server_id", "KeyType": "HASH"},
+                    {"AttributeName": "timestamp", "KeyType": "RANGE"},
+                ],
+                AttributeDefinitions=[
+                    {"AttributeName": "server_id", "AttributeType": "S"},
+                    {"AttributeName": "timestamp", "AttributeType": "S"},
+                ],
+                ProvisionedThroughput={"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
+            )
+
+        if "SentinelWebLogs" not in existing_tables:
+            self.dynamodb.create_table(
+                TableName="SentinelWebLogs",
                 KeySchema=[
                     {"AttributeName": "server_id", "KeyType": "HASH"},
                     {"AttributeName": "timestamp", "KeyType": "RANGE"},
@@ -106,7 +121,10 @@ class SentinelDB:
         if "id" not in log_entry:
             log_entry["id"] = str(uuid.uuid4())
 
-        self.logs_table.put_item(Item=log_entry)
+        if log_type == "web":
+            self.web_logs_table.put_item(Item=log_entry)
+        else:
+            self.app_logs_table.put_item(Item=log_entry)
 
     def register_server(self, server_info: Dict):
         """Update or register a server"""
@@ -132,25 +150,20 @@ class SentinelDB:
         self, log_type: str, server_id: Optional[str] = None, limit: int = 50
     ) -> List[Dict]:
         """Query logs, optionally filtered by server"""
-        # Scan is inefficient but works for MVP if server_id is None.
-        # Ideally, we should use a GSI for log_type or just query by server_id.
+        target_table = self.web_logs_table if log_type == "web" else self.app_logs_table
 
         if server_id:
-            response = self.logs_table.query(
+            response = target_table.query(
                 KeyConditionExpression=Key("server_id").eq(server_id),
                 ScanIndexForward=False,
                 Limit=limit,
             )
-            items = response.get("Items", [])
-            # In-memory filter for log_type since it's sharing the table
-            return [l for l in items if l.get("type") == log_type]
+            return response.get("Items", [])
         else:
-            # Scan! (Warning: slow for large datasets)
-            response = self.logs_table.scan(
-                FilterExpression=Key("type").eq(log_type),
-                Limit=limit * 5,  # Fetch more to filter
-            )
-            # Sort manually
+            # Scan! Now efficient as tables are split
+            # We scan more than limit to increase chance of getting recent items if possible,
+            # but ultimately Scan order is undefined.
+            response = target_table.scan(Limit=limit * 5)
             items = sorted(
                 response.get("Items", []), key=lambda x: x["timestamp"], reverse=True
             )

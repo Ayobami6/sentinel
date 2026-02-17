@@ -1,12 +1,17 @@
 import traceback
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
 from typing import Optional, Dict
 from datetime import datetime
 import uuid
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+# Load environment variables before importing services that rely on them
+load_dotenv()
+
 from services.dynamo_service import SentinelDB
-import traceback
 
 app = FastAPI(title="Sentinel Ingest API", version="1.0.0")
 
