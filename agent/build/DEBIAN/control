@@ -1,1 +1,7 @@
-            
+Package: sentinel-agent
+Version: 1.0.0
+Architecture: amd64
+Maintainer: Sentinel Team <admin@sentinel.local>
+Description: Sentinel System Monitoring Agent
+ Collects system metrics (CPU, Memory, Disk, Network) and log data
+ for the Sentinel monitoring platform.
