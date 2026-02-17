@@ -1,5 +1,8 @@
-backend_url: "http://localhost:8000"
+backend_url: "https://swarm.getlinked.ai"
 interval: 15
-log_files:
-  - "/Users/ayo/log/access.log"
-  - "/var/log/syslog"
+logs:
+  web:
+    - "/var/log/nginx/access.log"
+    - "/var/log/nginx/error.log"
+  app:
+    - "/var/log/uvicorn.log"
