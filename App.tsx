@@ -22,7 +22,8 @@ import {
   Link as LinkIcon,
   Clock,
   TrendingUp,
-  Timer
+  Timer,
+  Code
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, BarChart, Bar } from 'recharts';
 import { MOCK_SERVERS, MOCK_WEB_LOGS, MOCK_APP_LOGS } from './services/mockData';
@@ -103,8 +104,8 @@ const App: React.FC = () => {
       if (isUp) {
         const [apiServers, apiAppLogs, apiWebLogs] = await Promise.all([
           sentinelApi.getServers(),
-          sentinelApi.getAppLogs(),
-          sentinelApi.getWebLogs()
+          sentinelApi.getAppLogs(serverFilter),
+          sentinelApi.getWebLogs(serverFilter)
         ]);
 
         // Merge latest metrics into servers list if missing
@@ -127,7 +128,7 @@ const App: React.FC = () => {
       console.error("Sync failed", e);
       setBackendOnline(false);
     }
-  }, []);
+  }, [serverFilter]);
 
   useEffect(() => {
     syncWithApi();
@@ -301,8 +302,8 @@ const App: React.FC = () => {
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                     <div className="flex items-center gap-4">
                       <div className={`p-3 rounded-xl ${server.status === 'healthy' ? 'bg-emerald-500/10 text-emerald-400' :
-                          server.status === 'warning' ? 'bg-amber-500/10 text-amber-400' :
-                            'bg-rose-500/10 text-rose-400'
+                        server.status === 'warning' ? 'bg-amber-500/10 text-amber-400' :
+                          'bg-rose-500/10 text-rose-400'
                         }`}>
                         <ServerIcon size={24} />
                       </div>
@@ -315,8 +316,8 @@ const App: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-3">
                       <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase border ${server.status === 'healthy' ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' :
-                          server.status === 'warning' ? 'bg-amber-500/5 border-amber-500/20 text-amber-400' :
-                            'bg-rose-500/5 border-rose-500/20 text-rose-400'
+                        server.status === 'warning' ? 'bg-amber-500/5 border-amber-500/20 text-amber-400' :
+                          'bg-rose-500/5 border-rose-500/20 text-rose-400'
                         }`}>
                         {server.status}
                       </div>
@@ -702,11 +703,40 @@ const App: React.FC = () => {
           <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
             <ServerIcon size={20} className="text-indigo-400" /> Agent Configuration
           </h3>
-          <div className="bg-slate-950 p-4 rounded-xl border border-slate-700 mono text-[11px] text-blue-400 space-y-1">
-            <div className="text-slate-600"># sentinel-agent.yaml</div>
-            <div>server_id: "prod-api-01"</div>
-            <div>backend_url: "http://sentinel-hub:8000"</div>
-            <div>poll_interval: "15s"</div>
+          <div className="bg-slate-950 p-4 rounded-xl border border-slate-700 mono text-[11px] space-y-6 overflow-hidden">
+            <div className="space-y-2">
+              <div className="text-slate-500 font-bold uppercase tracking-wider text-[10px] flex items-center gap-2">
+                <Terminal size={14} /> Installation
+              </div>
+              <div className="flex flex-col gap-2 p-3 bg-slate-900/50 rounded-lg border border-slate-800 text-slate-300 font-mono">
+                <div className="flex gap-2">
+                  <span className="text-purple-400 select-none">$</span>
+                  <span className="break-all">wget https://github.com/Ayobami6/sentinel/raw/refs/heads/main/agent/sentinel-agent_1.0.0_amd64.deb</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="text-purple-400 select-none">$</span>
+                  <span>sudo apt install ./sentinel-agent_1.0.0_amd64.deb</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-slate-500 font-bold uppercase tracking-wider text-[10px] flex items-center gap-2">
+                <Code size={14} /> Configuration (/etc/sentinel-agent.yaml)
+              </div>
+              <div className="p-3 bg-slate-900 rounded-lg border border-slate-800 text-blue-300 font-mono text-[10px] leading-relaxed relative group">
+                <pre>{`server_id: "prod-api-01"
+backend_url: "https://swarm.getlinked.ai"
+interval: 15
+
+logs:
+  web:
+    - "/var/log/nginx/access.log"
+    - "/var/log/nginx/error.log"
+  app:
+    - "/var/log/uvicorn.log"`}</pre>
+              </div>
+            </div>
           </div>
           <p className="mt-4 text-xs text-slate-500 leading-relaxed">Ensure agents have network visibility to the FastAPI hub on port 8000.</p>
         </div>
