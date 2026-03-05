@@ -7,11 +7,11 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from services.mongo_service import SentinelDB
 
 # Load environment variables before importing services that rely on them
 load_dotenv()
 
-from services.dynamo_service import SentinelDB
 
 app = FastAPI(title="Sentinel Ingest API", version="1.0.0")
 
@@ -32,10 +32,10 @@ db = SentinelDB()
 @app.on_event("startup")
 async def startup_event():
     try:
-        db.init_tables()
-        print("DynamoDB tables initialized/verified.")
+        await db.init_tables()
+        print("MongoDB collections/indexes initialized.")
     except Exception as e:
-        print(f"Warning: Could not initialize tables (check AWS creds): {e}")
+        print(f"Warning: Could not initialize tables (check MongoDB URI): {e}")
 
 
 # --- Data Models ---
@@ -88,7 +88,7 @@ async def register_server(data: ServerIn):
     try:
         server_info = data.model_dump()
         server_info["last_seen"] = datetime.utcnow().isoformat()
-        db.register_server(server_info)
+        await db.register_server(server_info)
         return {"status": "registered", "id": data.id}
     except Exception as e:
         traceback.print_exc()
@@ -98,7 +98,7 @@ async def register_server(data: ServerIn):
 @app.post("/v1/ingest/metrics", status_code=201)
 async def ingest_metrics(data: MetricIn):
     try:
-        db.save_metric(data.model_dump())
+        await db.save_metric(data.model_dump())
         return {"status": "accepted", "id": str(uuid.uuid4())}
     except Exception as e:
         traceback.print_exc()
@@ -109,7 +109,7 @@ async def ingest_metrics(data: MetricIn):
 async def ingest_web_logs(data: WebLogIn):
     try:
         log_entry = data.model_dump()
-        db.save_log(log_entry, "web")
+        await db.save_log(log_entry, "web")
         return {"status": "indexed", "id": str(uuid.uuid4())}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -119,7 +119,7 @@ async def ingest_web_logs(data: WebLogIn):
 async def ingest_app_logs(data: AppLogIn):
     try:
         log_entry = data.model_dump()
-        db.save_log(log_entry, "app")
+        await db.save_log(log_entry, "app")
         return {"status": "indexed", "id": str(uuid.uuid4())}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -131,7 +131,7 @@ async def ingest_app_logs(data: AppLogIn):
 @app.get("/v1/query/servers")
 async def get_servers():
     try:
-        return db.get_all_servers()
+        return await db.get_all_servers()
     except Exception as e:
         print(f"DB Error: {e}")
         return []
@@ -140,7 +140,7 @@ async def get_servers():
 @app.get("/v1/query/metrics/{server_id}")
 async def get_server_metrics(server_id: str, limit: int = 30):
     try:
-        return db.get_server_metrics(server_id, limit)
+        return await db.get_server_metrics(server_id, limit)
     except Exception as e:
         print(f"DB Error: {e}")
         return []
@@ -149,7 +149,7 @@ async def get_server_metrics(server_id: str, limit: int = 30):
 @app.get("/v1/query/logs/app")
 async def get_app_logs(server_id: Optional[str] = None, limit: int = 50):
     try:
-        return db.get_logs("app", server_id, limit)
+        return await db.get_logs("app", server_id, limit)
     except Exception as e:
         print(f"DB Error: {e}")
         return []
@@ -158,7 +158,7 @@ async def get_app_logs(server_id: Optional[str] = None, limit: int = 50):
 @app.get("/v1/query/logs/web")
 async def get_web_logs(server_id: Optional[str] = None, limit: int = 50):
     try:
-        return db.get_logs("web", server_id, limit)
+        return await db.get_logs("web", server_id, limit)
     except Exception as e:
         print(f"DB Error: {e}")
         return []
@@ -166,7 +166,7 @@ async def get_web_logs(server_id: Optional[str] = None, limit: int = 50):
 
 @app.get("/v1/health")
 async def health_check():
-    return {"status": "online", "engine": "FastAPI + DynamoDB", "uptime": "up"}
+    return {"status": "online", "engine": "FastAPI + MongoDB", "uptime": "up"}
 
 
 if __name__ == "__main__":

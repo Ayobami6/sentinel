@@ -1,36 +1,23 @@
-import boto3
 import os
 import uuid
+import asyncio
 from datetime import datetime
-import time
 from dotenv import load_dotenv
 
-
 load_dotenv()
-# Mock AWS credentials if not present, to avoid boto3 errors if user hasn't set them yet
-if not os.getenv("AWS_ACCESS_KEY_ID"):
-    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-    os.environ["AWS_SECURITY_TOKEN"] = "testing"
-    os.environ["AWS_SESSION_TOKEN"] = "testing"
-    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
 
 try:
-    from services.dynamo_service import SentinelDB
+    from services.mongo_service import SentinelDB
 except ImportError:
     print(
         "Error: Could not import SentinelDB. Make sure you are running this from the project root."
     )
     exit(1)
 
-print(os.getenv("AWS_ACCESS_KEY_ID"))
 
+async def test_mongo_integration():
+    print("--- Starting MongoDB Integration Test ---")
 
-def test_dynamo_integration():
-    print("--- Starting DynamoDB Integration Test ---")
-
-    # Check if a local DynamoDB or AWS is accessible
-    # This test might fail if no credentials or network, but it validates the code path.
     try:
         db = SentinelDB()
         print("[Pass] SentinelDB initialized")
@@ -38,18 +25,18 @@ def test_dynamo_integration():
         print(f"[Fail] SentinelDB initialization failed: {e}")
         return
 
-    # 1. Init Tables
+    # 1. Init Indexes
     try:
-        print("Attempting to initialize tables...")
-        db.init_tables()
+        print("Attempting to initialize indexes...")
+        await db.init_tables()
         print("[Pass] init_tables executed")
     except Exception as e:
-        print(f"[Warn] init_tables failed (expected if no AWS creds/connection): {e}")
-        # We continue to see if mock logic works or if it's just connection error
+        print(f"[Warn] init_tables failed (expected if no DB connection): {e}")
 
     # 2. Save Metric
+    server_id = f"test-server-{uuid.uuid4().hex[:6]}"
     metric = {
-        "server_id": "test-server-01",
+        "server_id": server_id,
         "cpu": 50.5,
         "memory": 60.0,
         "disk": 70.0,
@@ -58,14 +45,14 @@ def test_dynamo_integration():
         "timestamp": datetime.utcnow(),
     }
     try:
-        db.save_metric(metric)
+        await db.save_metric(metric)
         print("[Pass] save_metric executed")
     except Exception as e:
         print(f"[Fail] save_metric failed: {e}")
 
     # 3. Save Log
     log = {
-        "server_id": "test-server-01",
+        "server_id": server_id,
         "method": "GET",
         "path": "/test",
         "status": 200,
@@ -75,7 +62,7 @@ def test_dynamo_integration():
         "timestamp": datetime.utcnow(),
     }
     try:
-        db.save_log(log, "web")
+        await db.save_log(log, "web")
         print("[Pass] save_log executed")
     except Exception as e:
         print(f"[Fail] save_log failed: {e}")
@@ -84,4 +71,4 @@ def test_dynamo_integration():
 
 
 if __name__ == "__main__":
-    test_dynamo_integration()
+    asyncio.run(test_mongo_integration())
