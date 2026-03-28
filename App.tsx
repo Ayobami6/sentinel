@@ -23,8 +23,10 @@ import {
   Clock,
   TrendingUp,
   Timer,
-  Code
+  Code,
+  LogOut
 } from 'lucide-react';
+import { useAuth } from './src/auth/AuthContext';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, BarChart, Bar } from 'recharts';
 import { MOCK_SERVERS, MOCK_WEB_LOGS, MOCK_APP_LOGS } from './services/mockData';
 import { ViewType, Server, WebLog, AppLog, ServerMetric } from './types';
@@ -79,6 +81,7 @@ const ServerContextBar = ({ servers, selectedId, onSelect }: { servers: Server[]
 );
 
 const App: React.FC = () => {
+  const { logout } = useAuth();
   const [activeView, setActiveView] = useState<ViewType>('overview');
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
 
@@ -787,6 +790,13 @@ logs:
               <p className="text-[10px] text-slate-500 truncate font-mono">admin-01@internal</p>
             </div>
           </div>
+          <button
+            onClick={logout}
+            className="mt-3 w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-slate-400 hover:bg-rose-500/10 hover:text-rose-400 border border-transparent hover:border-rose-500/20 transition-all text-sm font-medium"
+          >
+            <LogOut size={16} />
+            <span>Sign Out</span>
+          </button>
         </div>
       </aside>
 

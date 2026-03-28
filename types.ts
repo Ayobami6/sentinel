@@ -43,3 +43,17 @@ export interface Server {
 }
 
 export type ViewType = 'overview' | 'server-detail' | 'logs' | 'web-analytics' | 'config';
+
+export interface AuthUser {
+  username: string;
+}
+
+export interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+}
