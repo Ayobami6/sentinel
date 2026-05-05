@@ -37,6 +37,11 @@ class SentinelDB:
             [("server_id", pymongo.ASCENDING), ("timestamp", pymongo.DESCENDING)]
         )
 
+        # Standalone timestamp indexes for global queries and sorting
+        await self.metrics_col.create_index([("timestamp", pymongo.DESCENDING)])
+        await self.app_logs_col.create_index([("timestamp", pymongo.DESCENDING)])
+        await self.web_logs_col.create_index([("timestamp", pymongo.DESCENDING)])
+
         # In MongoDB, the _id field is always indexed.
         # But we use 'id' as our primary identifier, so we can index it.
         await self.servers_col.create_index("id", unique=True)
@@ -64,16 +69,12 @@ class SentinelDB:
                         "os": "unknown",
                         "status": "active",
                         "agentVersion": "unknown",
-                        "last_seen": datetime.utcnow().isoformat(),
                     }
                 )
             self._known_servers.add(server_id)
 
-        # Convert timestamp to string if it's a datetime object
-        if isinstance(metric.get("timestamp"), datetime):
-            metric["timestamp"] = metric["timestamp"].isoformat()
-
         # In MongoDB, we don't need to manually stringify floats to Decimal like DynamoDB
+        # Storing native datetime objects is more efficient than ISO strings.
         await self.metrics_col.insert_one(metric)
         # Remove the inserted `_id` so we don't mutate the dictionary for the caller
         if "_id" in metric:
@@ -81,8 +82,7 @@ class SentinelDB:
 
     async def save_log(self, log_entry: Dict, log_type: str):
         """Save a log entry (web or app)"""
-        if isinstance(log_entry.get("timestamp"), datetime):
-            log_entry["timestamp"] = log_entry["timestamp"].isoformat()
+        # Storing native datetime objects is more efficient than ISO strings.
 
         log_entry["type"] = log_type  # 'web' or 'app'
 
