@@ -5,9 +5,15 @@ from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, ExpiredSignatureError, jwt
+import bcrypt
 from passlib.context import CryptContext
 
+# Passlib workaround: Bcrypt 4.0+ removed __about__ which passlib relies on
+if not hasattr(bcrypt, "__about__"):
+    bcrypt.__about__ = type("About", (), {"__version__": bcrypt.__version__})
+
 load_dotenv()
+
 
 # --- Configuration ---
 
@@ -20,7 +26,11 @@ if not JWT_SECRET:
 ALGORITHM = "HS256"
 
 # bcrypt context with cost factor 12
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
+# Use bcrypt_sha256 to support long passwords (>72 chars) and bcrypt for legacy
+_pwd_context = CryptContext(
+    schemes=["bcrypt_sha256", "bcrypt"], deprecated="auto", bcrypt__rounds=12
+)
+
 
 
 # --- Password helpers ---
