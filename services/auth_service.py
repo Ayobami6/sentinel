@@ -26,10 +26,11 @@ if not JWT_SECRET:
 ALGORITHM = "HS256"
 
 # bcrypt context with cost factor 12
-# Use bcrypt_sha256 to support long passwords (>72 chars) and bcrypt for legacy
+# Use argon2 as the primary scheme, with bcrypt schemes for legacy verification
 _pwd_context = CryptContext(
-    schemes=["bcrypt_sha256", "bcrypt"], deprecated="auto", bcrypt__rounds=12
+    schemes=["argon2", "bcrypt_sha256", "bcrypt"], deprecated="auto"
 )
+
 
 
 
@@ -37,12 +38,13 @@ _pwd_context = CryptContext(
 
 
 def hash_password(plain: str) -> str:
-    """Hash a plaintext password using bcrypt (cost factor 12)."""
+    """Hash a plaintext password using Argon2."""
     return _pwd_context.hash(plain)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Return True if *plain* matches the stored *hashed* password."""
+
     return _pwd_context.verify(plain, hashed)
 
 

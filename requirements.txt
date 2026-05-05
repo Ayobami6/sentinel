@@ -17,7 +17,8 @@ typing-inspection==0.4.2
 urllib3==2.6.3
 uvicorn==0.40.0
 python-dotenv==1.0.0
-python-jose[cryptography]
-passlib[bcrypt]
+passlib[argon2,bcrypt_sha256]
+argon2-cffi==25.1.0
 bcrypt==3.2.2
+
 python-multipart
