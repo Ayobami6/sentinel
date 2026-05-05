@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+# Load environment variables before importing services that rely on them
+load_dotenv()
+
 from services.mongo_service import SentinelDB
 from services.auth_service import (
     verify_password,
@@ -15,9 +18,6 @@ from services.auth_service import (
     verify_token,
     get_current_user,
 )
-
-# Load environment variables before importing services that rely on them
-load_dotenv()
 
 
 app = FastAPI(title="Sentinel Ingest API", version="1.0.0")
@@ -113,7 +113,7 @@ async def register_server(data: ServerIn):
 
 
 @app.post("/v1/ingest/metrics", status_code=201)
-async def ingest_metrics(data: MetricIn, _: dict = Depends(get_current_user)):
+async def ingest_metrics(data: MetricIn):
     try:
         await db.save_metric(data.model_dump())
         return {"status": "accepted", "id": str(uuid.uuid4())}
@@ -123,7 +123,7 @@ async def ingest_metrics(data: MetricIn, _: dict = Depends(get_current_user)):
 
 
 @app.post("/v1/ingest/logs/web", status_code=201)
-async def ingest_web_logs(data: WebLogIn, _: dict = Depends(get_current_user)):
+async def ingest_web_logs(data: WebLogIn):
     try:
         log_entry = data.model_dump()
         await db.save_log(log_entry, "web")
@@ -133,7 +133,7 @@ async def ingest_web_logs(data: WebLogIn, _: dict = Depends(get_current_user)):
 
 
 @app.post("/v1/ingest/logs/app", status_code=201)
-async def ingest_app_logs(data: AppLogIn, _: dict = Depends(get_current_user)):
+async def ingest_app_logs(data: AppLogIn):
     try:
         log_entry = data.model_dump()
         await db.save_log(log_entry, "app")
