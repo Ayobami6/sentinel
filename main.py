@@ -1,4 +1,6 @@
+import os
 import traceback
+
 from typing import Optional, Dict
 from datetime import datetime
 import uuid
@@ -23,13 +25,15 @@ from services.auth_service import (
 app = FastAPI(title="Sentinel Ingest API", version="1.0.0")
 
 # Enable CORS for frontend integration
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin.strip() for origin in allowed_origins if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Initialize DB
 db = SentinelDB()
@@ -227,9 +231,10 @@ async def login(data: LoginRequest, response: Response):
         value=refresh_token,
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="none",
         max_age=_COOKIE_MAX_AGE,
     )
+
     return TokenResponse(access_token=access_token)
 
 
@@ -267,9 +272,10 @@ async def logout(response: Response):
         value="",
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="none",
         max_age=0,
     )
+
     return {"status": "logged out"}
 
 
